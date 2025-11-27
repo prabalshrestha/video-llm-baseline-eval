@@ -162,17 +162,23 @@ class TweetDataFetcher:
     def filter_video_tweets(self, tweets):
         """Filter tweets that contain video media."""
         video_tweets = []
+        image_tweets = []
+        no_media_tweets = []
 
         for tweet in tweets:
             if "media" in tweet:
+                has_video = False
                 for media_item in tweet["media"]:
-                    if media_item.get("type") == "video":
+                    media_type = media_item.get("type")
+                    
+                    if media_type == "video" or media_type == "animated_gif":
                         video_tweets.append(
                             {
                                 "tweet_id": tweet["id"],
                                 "text": tweet.get("text", ""),
                                 "created_at": tweet.get("created_at", ""),
                                 "author_id": tweet.get("author_id", ""),
+                                "media_type": media_type,
                                 "media_key": media_item.get("media_key", ""),
                                 "video_duration_ms": media_item.get("duration_ms", 0),
                                 "preview_image_url": media_item.get(
@@ -181,10 +187,21 @@ class TweetDataFetcher:
                                 "video_variants": media_item.get("variants", []),
                             }
                         )
+                        has_video = True
                         break  # Only count once per tweet
+                
+                if not has_video:
+                    # It's a photo tweet
+                    image_tweets.append(tweet["id"])
+            else:
+                # No media found
+                no_media_tweets.append(tweet["id"])
 
-        logger.info(f"Found {len(video_tweets)} tweets with videos")
-        return video_tweets
+        logger.info(f"Found {len(video_tweets)} tweets with VIDEO")
+        logger.info(f"Found {len(image_tweets)} tweets with IMAGES only")
+        logger.info(f"Found {len(no_media_tweets)} tweets with NO MEDIA")
+        
+        return video_tweets, image_tweets, no_media_tweets
 
     def save_video_tweet_data(self, video_tweets, filename="video_tweets.json"):
         """Save video tweet data to file."""
@@ -245,10 +262,12 @@ class TweetDataFetcher:
 
         # Step 4: Filter for videos
         logger.info("\nStep 4: Filtering for tweets with videos...")
-        video_tweets = self.filter_video_tweets(tweets)
+        video_tweets, image_tweets, no_media_tweets = self.filter_video_tweets(tweets)
 
         if not video_tweets:
             logger.warning("No video tweets found")
+            logger.info(f"Image tweets: {len(image_tweets)}")
+            logger.info(f"No media tweets: {len(no_media_tweets)}")
             return None
 
         # Step 5: Save results
@@ -261,12 +280,11 @@ class TweetDataFetcher:
         logger.info("=" * 70)
         logger.info(f"Total media notes: {len(media_notes)}")
         logger.info(f"Unique tweets checked: {len(tweet_ids)}")
-        logger.info(f"Tweets with videos: {len(video_tweets)}")
-        logger.info(
-            f"Video percentage: {len(video_tweets)/len(tweet_ids)*100:.1f}%"
-        )
-        logger.info(f"\nResults saved to: {output_file}")
-        logger.info("\nNext step: Download videos using video URLs")
+        logger.info(f"Tweets with VIDEOS: {len(video_tweets)} ({len(video_tweets)/len(tweet_ids)*100:.1f}%)")
+        logger.info(f"Tweets with IMAGES only: {len(image_tweets)} ({len(image_tweets)/len(tweet_ids)*100:.1f}%)")
+        logger.info(f"Tweets with NO MEDIA: {len(no_media_tweets)} ({len(no_media_tweets)/len(tweet_ids)*100:.1f}%)")
+        logger.info(f"\nVideo results saved to: {output_file}")
+        logger.info("\nNext step: Download videos using video URLs from the JSON file")
 
         return video_tweets
 
