@@ -1,0 +1,18 @@
+# Core dependencies
+pandas>=2.0.0
+requests>=2.31.0
+numpy>=1.24.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Video LLM APIs (for evaluation phase)
+openai>=1.0.0
+anthropic>=0.18.0
+
+# Optional: Data analysis
+matplotlib>=3.7.0
+seaborn>=0.12.0
+jupyter>=1.0.0
+tqdm>=4.65.0
+

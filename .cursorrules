@@ -1,0 +1,41 @@
+# Cursor Rules for Video LLM Baseline Evaluation Project
+
+## Project Context
+This is a research project evaluating Video Large Language Models (LLMs) for detecting video misinformation, inspired by X/Twitter's Community Notes system.
+
+## Code Style
+- Python 3.8+
+- Use type hints where beneficial
+- Follow PEP 8 style guide
+- Add docstrings to functions and classes
+- Use logging instead of print statements for production code
+
+## Project Structure
+- `data/`: All datasets (raw, filtered, videos)
+- `scripts/`: Utility scripts
+- `notebooks/`: Jupyter notebooks for exploration
+- `results/`: Evaluation results and outputs
+
+## Key Files
+- `download_filter_community_notes.py`: Main data collection
+- `explore_data.py`: Data analysis
+- `download_videos.py`: Video download helper
+- `test_setup.py`: Environment verification
+
+## Research Focus
+- Video content understanding
+- Misinformation detection
+- AI-generated content identification
+- Context provision for viewers
+
+## Data Sources
+- X/Twitter Community Notes
+- AI-generated video datasets
+- Deepfake datasets
+
+## Important Notes
+- Respect Twitter's ToS and rate limits
+- Handle user data responsibly
+- Document all evaluation metrics
+- Keep research reproducible
+
