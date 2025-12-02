@@ -44,30 +44,23 @@ class VideoLLMCLI:
 
     def download(self):
         """Download and filter Community Notes data."""
-        return self.run_script("download_filter_community_notes.py")
+        return self.run_script("scripts/data_processing/download_notes.py")
 
     def filter(self):
         """Filter for likely video notes."""
         return self.run_script("scripts/data_processing/filter_video_notes.py")
 
     def videos(self, limit=30):
-        """Download sample videos."""
+        """Download videos."""
         args = ["--limit", str(limit)]
-        return self.run_script(
-            "scripts/data_processing/download_sample_videos.py", args
-        )
+        return self.run_script("scripts/data_processing/download_videos.py", args)
 
-    def mapping(self):
-        """Create video-notes mappings."""
-        success1 = self.run_script(
-            "scripts/data_processing/create_video_notes_mapping.py"
-        )
-        if success1:
-            success2 = self.run_script("scripts/data_processing/create_json_mapping.py")
-            return success2
-        return False
+    def dataset(self, use_api=True):
+        """Create complete evaluation dataset."""
+        args = ["--no-api"] if not use_api else []
+        return self.run_script("scripts/data_processing/create_dataset.py", args)
 
-    def pipeline(self, video_limit=30):
+    def pipeline(self, video_limit=30, use_api=True):
         """Run the complete data collection pipeline."""
         print("\n" + "=" * 70)
         print("VIDEO LLM BASELINE EVALUATION - FULL PIPELINE")
@@ -78,7 +71,7 @@ class VideoLLMCLI:
             ("Download Community Notes", self.download),
             ("Filter for Videos", self.filter),
             ("Download Videos", lambda: self.videos(video_limit)),
-            ("Create Mappings", self.mapping),
+            ("Create Dataset", lambda: self.dataset(use_api)),
         ]
 
         completed = 0
@@ -103,16 +96,11 @@ class VideoLLMCLI:
 
     def explore(self):
         """Explore the data."""
-        return self.run_script("explore_data.py")
+        return self.run_script("scripts/data_processing/explore_notes.py")
 
     def test(self):
         """Test environment setup."""
         return self.run_script("test_setup.py")
-
-    def fetch_tweets(self, limit=None):
-        """Fetch tweet data via Twitter API."""
-        args = ["--limit", str(limit)] if limit else []
-        return self.run_script("scripts/data_processing/fetch_tweet_data.py", args)
 
     def show_results(self):
         """Show summary of collected data."""
@@ -167,11 +155,10 @@ Available Commands:
   python main.py download              Download & filter Community Notes
   python main.py filter                Filter for likely video notes  
   python main.py videos [--limit N]    Download N videos (default: 30)
-  python main.py mapping               Create video-notes mappings
+  python main.py dataset               Create evaluation dataset ⭐
   python main.py pipeline [--limit N]  Run full pipeline (default: 30 videos)
   python main.py explore               Explore collected data
   python main.py test                  Test environment setup
-  python main.py fetch [--limit N]     Fetch tweets via Twitter API
   python main.py status                Show data summary
   python main.py help                  Show this help
 
@@ -180,8 +167,12 @@ Examples:
   # Quick start - run everything
   python main.py pipeline
 
-  # Download 50 videos
+  # Just create dataset from existing data
+  python main.py dataset
+
+  # Download 50 videos then create dataset
   python main.py videos --limit 50
+  python main.py dataset
 
   # Check what you have
   python main.py status
@@ -190,7 +181,10 @@ Examples:
   python main.py download
   python main.py filter
   python main.py videos --limit 30
-  python main.py mapping
+  python main.py dataset
+
+Note: Dataset creation automatically uses Twitter API if credentials are available.
+      Add TWITTER_BEARER_TOKEN to .env for complete tweet data.
 """
         )
 
@@ -209,11 +203,10 @@ def main():
             "download",
             "filter",
             "videos",
-            "mapping",
+            "dataset",
             "pipeline",
             "explore",
             "test",
-            "fetch",
             "status",
             "help",
         ],
@@ -234,11 +227,10 @@ def main():
         "download": cli.download,
         "filter": cli.filter,
         "videos": lambda: cli.videos(args.limit),
-        "mapping": cli.mapping,
-        "pipeline": lambda: cli.pipeline(args.limit),
+        "dataset": cli.dataset,
+        "pipeline": cli.pipeline,
         "explore": cli.explore,
         "test": cli.test,
-        "fetch": lambda: cli.fetch_tweets(args.limit),
         "status": cli.show_results,
         "help": cli.show_help,
     }
@@ -251,4 +243,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
