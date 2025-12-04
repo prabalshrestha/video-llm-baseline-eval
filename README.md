@@ -87,6 +87,12 @@ python main.py download              # Download Community Notes
 python main.py filter                # Filter for videos
 python main.py videos --limit 30     # Download videos
 python main.py dataset               # Create evaluation dataset ⭐
+python main.py evaluate              # Evaluate Video LLMs 🎯
+
+# Evaluation options
+python main.py evaluate --models gemini,gpt4o    # Both models
+python main.py evaluate --models gemini --limit 5  # Gemini only, 5 samples
+python main.py evaluate --models gpt4o --limit 3   # GPT-4o only, 3 samples
 
 # Utilities
 python main.py status                # Show data summary
@@ -224,27 +230,85 @@ Requires Twitter API credentials. 100% accurate.
 - ✅ Get video URLs and metadata
 - ⏳ Requires API approval
 
-## Video LLMs to Evaluate
+## Video LLMs Implemented
 
-### Commercial
+### Commercial (Implemented ✅)
 
-- GPT-4 Vision (OpenAI)
-- Claude 3 (Anthropic)
-- Gemini Pro Vision (Google)
+- **Gemini 1.5 Pro** (Google) - Best for long videos, 2M token context window
+- **GPT-4o** (OpenAI) - Excellent for short clips with OCR-heavy content
 
-### Open Source
+### Future Models
 
-- LLaVA
-- Video-LLaMA
-- VideoChat
+- Claude 3.5 Sonnet (Anthropic)
+- Qwen2.5-VL
+- Open source models (LLaVA, Video-LLaMA)
+
+## Evaluation
+
+### Setup
+
+1. **Install evaluation dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+2. **Configure API keys:**
+Create a `.env` file in the project root:
+```bash
+# Get Gemini API key at: https://ai.google.dev/
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Get OpenAI API key at: https://platform.openai.com/
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+3. **Test setup:**
+```bash
+python scripts/evaluation/test_evaluation_setup.py
+```
+
+### Running Evaluation
+
+**Quick start:**
+```bash
+# Evaluate with both models on all videos
+python main.py evaluate
+
+# Evaluate with specific model on limited samples
+python main.py evaluate --models gemini --limit 5
+python main.py evaluate --models gpt4o --limit 3
+
+# Evaluate with both models
+python main.py evaluate --models gemini,gpt4o
+```
+
+### Output
+
+The evaluation generates:
+- **`llm_results_{timestamp}.json`** - Complete results with all metrics
+- **`evaluation_summary_{timestamp}.txt`** - Human-readable summary report
+
+### Models Available
+
+1. **Gemini 1.5 Pro** - Best for long videos, native audio-visual understanding
+2. **GPT-4o** - Excellent for short clips with text/chart content
+
+### Metrics
+
+The evaluation compares LLM outputs with human Community Notes using:
+- **ROUGE scores** - Text overlap (ROUGE-1, ROUGE-2, ROUGE-L)
+- **BLEU score** - Precision-focused similarity
+- **Semantic similarity** - Meaning-based comparison using embeddings
+- **Classification accuracy** - Correct identification of misleading content
+- **Reason overlap** - Precision/recall for misinformation categories
 
 ## Next Steps
 
-1. **Create dataset** - `python main.py dataset`
-2. **Test manually** - Try GPT-4V on 1-2 videos
-3. **Add LLM code** - Create scripts in `scripts/evaluation/`
-4. **Compare results** - LLM output vs human notes
-5. **Analyze patterns** - What works, what doesn't
+1. ✅ **Create dataset** - `python main.py dataset`
+2. ✅ **Setup evaluation** - Configure API keys
+3. ✅ **Run evaluation** - `python main.py evaluate`
+4. **Analyze results** - Compare LLM outputs with human notes
+5. **Refine prompts** - Improve accuracy based on findings
 
 ## Environment Setup
 
@@ -361,9 +425,10 @@ Research use only. Respect Twitter's ToS and Community Notes data usage policies
 
 **Quick Commands**
 
-- `python main.py pipeline` - Run everything
+- `python main.py pipeline` - Run data collection
 - `python main.py dataset` - Create evaluation dataset ⭐
+- `python main.py evaluate` - Evaluate Video LLMs 🎯
 - `python main.py status` - Check data
 - `python main.py help` - Show commands
 
-**Questions?** The workflow is: `download` → `filter` → `videos` → `dataset` → evaluate!
+**Complete Workflow:** `download` → `filter` → `videos` → `dataset` → `evaluate` → analyze!

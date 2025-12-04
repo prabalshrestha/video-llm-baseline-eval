@@ -6,7 +6,8 @@ Usage:
     python main.py download              # Download & filter Community Notes
     python main.py filter                # Filter for video notes
     python main.py videos --limit 30     # Download videos
-    python main.py mapping               # Create mappings
+    python main.py dataset               # Create evaluation dataset
+    python main.py evaluate              # Evaluate Video LLMs
     python main.py pipeline              # Run full pipeline
     python main.py explore               # Explore data
     python main.py test                  # Test setup
@@ -59,6 +60,13 @@ class VideoLLMCLI:
         """Create complete evaluation dataset."""
         args = ["--no-api"] if not use_api else []
         return self.run_script("scripts/data_processing/create_dataset.py", args)
+
+    def evaluate(self, models="gemini,gpt4o", limit=None):
+        """Evaluate Video LLMs on the dataset."""
+        args = ["--models", models]
+        if limit:
+            args.extend(["--limit", str(limit)])
+        return self.run_script("scripts/evaluation/evaluate_models.py", args)
 
     def pipeline(self, video_limit=30, use_api=True):
         """Run the complete data collection pipeline."""
@@ -152,39 +160,62 @@ class VideoLLMCLI:
             """
 Available Commands:
 
-  python main.py download              Download & filter Community Notes
-  python main.py filter                Filter for likely video notes  
-  python main.py videos [--limit N]    Download N videos (default: 30)
-  python main.py dataset               Create evaluation dataset ⭐
-  python main.py pipeline [--limit N]  Run full pipeline (default: 30 videos)
-  python main.py explore               Explore collected data
-  python main.py test                  Test environment setup
-  python main.py status                Show data summary
-  python main.py help                  Show this help
+  python main.py download                    Download & filter Community Notes
+  python main.py filter                      Filter for likely video notes  
+  python main.py videos [--limit N]          Download N videos (default: 30)
+  python main.py dataset                     Create evaluation dataset ⭐
+  python main.py evaluate [OPTIONS]          Evaluate Video LLMs 🎯
+  python main.py pipeline [--limit N]        Run full pipeline (default: 30 videos)
+  python main.py explore                     Explore collected data
+  python main.py test                        Test environment setup
+  python main.py status                      Show data summary
+  python main.py help                        Show this help
+
+Evaluation Options:
+
+  --models MODEL1,MODEL2    Models to evaluate (gemini, gpt4o)
+  --limit N                 Evaluate only first N samples
 
 Examples:
 
   # Quick start - run everything
   python main.py pipeline
 
-  # Just create dataset from existing data
+  # Create dataset and evaluate with both models
   python main.py dataset
+  python main.py evaluate
 
-  # Download 50 videos then create dataset
+  # Evaluate with only Gemini on 5 videos
+  python main.py evaluate --models gemini --limit 5
+
+  # Evaluate with both models
+  python main.py evaluate --models gemini,gpt4o
+
+  # Download 50 videos, create dataset, then evaluate
   python main.py videos --limit 50
   python main.py dataset
+  python main.py evaluate --limit 10
 
   # Check what you have
   python main.py status
 
-  # Step by step
+  # Step by step workflow
   python main.py download
   python main.py filter
   python main.py videos --limit 30
   python main.py dataset
+  python main.py evaluate
 
-Note: Dataset creation automatically uses Twitter API if credentials are available.
-      Add TWITTER_BEARER_TOKEN to .env for complete tweet data.
+API Keys Setup (Required for evaluation):
+
+  Create a .env file with:
+    GEMINI_API_KEY=your_key_here          # Get at: https://ai.google.dev/
+    OPENAI_API_KEY=your_key_here          # Get at: https://platform.openai.com/
+
+  Optional:
+    TWITTER_BEARER_TOKEN=your_key_here    # For complete tweet data
+
+Note: At least one Video LLM API key is required for evaluation.
 """
         )
 
@@ -204,6 +235,7 @@ def main():
             "filter",
             "videos",
             "dataset",
+            "evaluate",
             "pipeline",
             "explore",
             "test",
@@ -215,7 +247,14 @@ def main():
     )
 
     parser.add_argument(
-        "--limit", type=int, default=30, help="Number of videos to download"
+        "--limit", type=int, default=30, help="Number of videos to download/evaluate"
+    )
+
+    parser.add_argument(
+        "--models",
+        type=str,
+        default="gemini,gpt4o",
+        help="Models to evaluate (comma-separated: gemini, gpt4o)",
     )
 
     args = parser.parse_args()
@@ -228,6 +267,7 @@ def main():
         "filter": cli.filter,
         "videos": lambda: cli.videos(args.limit),
         "dataset": cli.dataset,
+        "evaluate": lambda: cli.evaluate(args.models, args.limit),
         "pipeline": cli.pipeline,
         "explore": cli.explore,
         "test": cli.test,
