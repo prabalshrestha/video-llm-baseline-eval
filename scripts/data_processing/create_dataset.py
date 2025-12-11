@@ -51,7 +51,7 @@ class DatasetCreator:
         try:
             import pandas as pd
 
-            notes_file = self.filtered_dir / "likely_video_notes.csv"
+            notes_file = self.filtered_dir / "verified_video_notes.csv"
             df = pd.read_csv(notes_file)
             logger.info(f"Loaded {len(df)} community notes")
             return df
@@ -105,10 +105,12 @@ class DatasetCreator:
         logger.info("📹 Using video metadata for tweet information")
         return {}
 
-    def create_dataset(self, videos: List[Dict], notes_df, video_metadata: Dict, tweet_data: Dict) -> List[Dict]:
+    def create_dataset(
+        self, videos: List[Dict], notes_df, video_metadata: Dict, tweet_data: Dict
+    ) -> List[Dict]:
         """Create the complete dataset."""
         import pandas as pd
-        
+
         dataset = []
 
         # Create notes lookup
@@ -158,7 +160,9 @@ class DatasetCreator:
                         "created_at", video_info.get("upload_date", "")
                     ),
                     "engagement": {
-                        "likes": api_tweet.get("likes", video_info.get("like_count", 0)),
+                        "likes": api_tweet.get(
+                            "likes", video_info.get("like_count", 0)
+                        ),
                         "retweets": api_tweet.get(
                             "retweets", video_info.get("repost_count", 0)
                         ),
@@ -215,8 +219,12 @@ class DatasetCreator:
             },
             "statistics": {
                 "total": len(dataset),
-                "misleading": sum(1 for d in dataset if d["community_note"]["is_misleading"]),
-                "with_api_data": sum(1 for d in dataset if d["metadata"]["has_api_data"]),
+                "misleading": sum(
+                    1 for d in dataset if d["community_note"]["is_misleading"]
+                ),
+                "with_api_data": sum(
+                    1 for d in dataset if d["metadata"]["has_api_data"]
+                ),
                 "total_duration": sum(d["video"]["duration_seconds"] for d in dataset),
             },
             "samples": dataset,
@@ -349,4 +357,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

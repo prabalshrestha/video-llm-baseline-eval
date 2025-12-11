@@ -224,20 +224,27 @@ class CommunityNotesDownloader:
         logger.info("Community Notes Media Filter")
         logger.info("=" * 50)
 
-        # Step 1: Download data
-        downloaded_files = self.download_all_data()
+        # Check if raw data already exists
+        notes_file = self.raw_dir / "notes-00000.tsv"
+        if notes_file.exists():
+            logger.info(f"\n✓ Found existing raw data: {notes_file}")
+            logger.info("Skipping download step...")
+            downloaded_files = {"notes": notes_file}
+        else:
+            # Step 1: Download data
+            downloaded_files = self.download_all_data()
 
-        if "notes" not in downloaded_files:
-            logger.error("Failed to download notes data. Cannot proceed.")
-            logger.info("\nTroubleshooting tips:")
-            logger.info("1. Check internet connection")
-            logger.info(
-                "2. Visit https://communitynotes.x.com/guide/en/under-the-hood/download-data"
-            )
-            logger.info(
-                "3. The data URL may have changed. Check the official documentation."
-            )
-            return None
+            if "notes" not in downloaded_files:
+                logger.error("Failed to download notes data. Cannot proceed.")
+                logger.info("\nTroubleshooting tips:")
+                logger.info("1. Check internet connection")
+                logger.info(
+                    "2. Visit https://communitynotes.x.com/guide/en/under-the-hood/download-data"
+                )
+                logger.info(
+                    "3. The data URL may have changed. Check the official documentation."
+                )
+                return None
 
         # Step 2: Load notes data
         notes_df = self.load_notes_data(downloaded_files["notes"])
@@ -246,23 +253,33 @@ class CommunityNotesDownloader:
             logger.error("Failed to load notes data")
             return None
 
-        # Step 3: Filter for media content
-        media_notes_df = self.filter_media_notes(notes_df)
+        # Check if filtered data already exists
+        existing_media_notes = self.filtered_dir / "media_notes.csv"
+        if existing_media_notes.exists():
+            logger.info(f"\n✓ Found existing filtered data: {existing_media_notes}")
+            logger.info("Skipping filtering step...")
+            media_notes_df = pd.read_csv(existing_media_notes)
+            logger.info(f"Loaded {len(media_notes_df)} media notes from existing file")
+        else:
+            # Step 3: Filter for media content
+            media_notes_df = self.filter_media_notes(notes_df)
 
         # Step 4: Save filtered data
-        if media_notes_df is not None and not media_notes_df.empty:
-            output_file = self.save_filtered_data(media_notes_df, filename="media_notes.csv")
-
-            # Step 5: Generate report
-            self.generate_summary_report(notes_df, media_notes_df)
+        if media_notes_df is not None and not media_notes_df.empty and not existing_media_notes.exists():
+            if not existing_media_notes.exists():
+                output_file = self.save_filtered_data(media_notes_df, filename="media_notes.csv")
+                # Step 5: Generate report
+                self.generate_summary_report(notes_df, media_notes_df)
+            else:
+                output_file = existing_media_notes
 
             logger.info("\n" + "=" * 50)
-            logger.info("SUCCESS: Media note filtering complete!")
+            logger.info("SUCCESS: Media notes ready!")
             logger.info("=" * 50)
-            logger.info(f"Filtered data saved to: {output_file}")
+            logger.info(f"Media notes file: {output_file}")
             logger.info(f"Total media notes: {len(media_notes_df)}")
             logger.info(f"Unique tweets: {media_notes_df['tweetId'].nunique()}")
-            logger.info("\nNext step: Use Twitter API to identify which tweets contain videos")
+            logger.info("\nNext step: Run 'python main.py filter' to identify videos")
 
             return media_notes_df
         else:
