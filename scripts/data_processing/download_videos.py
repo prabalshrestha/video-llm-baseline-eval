@@ -1,7 +1,6 @@
 """
 Download Sample Videos from Twitter
-Downloads videos from verified_video_notes.csv (or likely_video_notes.csv as fallback) using yt-dlp.
-For best results, run identify_video_notes.py first to get accurate video filtering.
+Downloads videos from the first N tweets in likely_video_notes.csv using yt-dlp.
 """
 
 import pandas as pd
@@ -48,26 +47,13 @@ class VideoDownloader:
             logger.error(f"Error checking yt-dlp: {e}")
             return False
 
-    def load_video_notes(self, limit=None, use_verified=True):
-        """Load video notes from CSV.
-        
-        Args:
-            limit: Number of notes to load
-            use_verified: If True, use verified_video_notes.csv (accurate),
-                         if False, use likely_video_notes.csv (keyword-based)
-        """
-        if use_verified:
-            filepath = self.filtered_dir / "verified_video_notes.csv"
-            if not filepath.exists():
-                logger.warning("verified_video_notes.csv not found, falling back to likely_video_notes.csv")
-                logger.warning("Run identify_video_notes.py first for accurate filtering!")
-                filepath = self.filtered_dir / "likely_video_notes.csv"
-        else:
-            filepath = self.filtered_dir / "likely_video_notes.csv"
+    def load_video_notes(self, limit=None):
+        """Load video notes from CSV."""
+        filepath = self.filtered_dir / "likely_video_notes.csv"
 
         try:
             df = pd.read_csv(filepath)
-            logger.info(f"Loaded {len(df)} video notes from {filepath.name}")
+            logger.info(f"Loaded {len(df)} video notes")
 
             if limit:
                 df = df.head(limit)
