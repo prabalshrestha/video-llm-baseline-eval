@@ -4,7 +4,7 @@ Main entry point for Video LLM Baseline Evaluation.
 
 Usage:
     python main.py download              # Download & filter Community Notes
-    python main.py filter                # Filter for video notes
+    python main.py filter                # Identify actual video notes (checks media type)
     python main.py videos --limit 30     # Download videos
     python main.py dataset               # Create evaluation dataset
     python main.py evaluate              # Evaluate Video LLMs
@@ -47,9 +47,10 @@ class VideoLLMCLI:
         """Download and filter Community Notes data."""
         return self.run_script("scripts/data_processing/download_notes.py")
 
-    def filter(self):
-        """Filter for likely video notes."""
-        return self.run_script("scripts/data_processing/filter_video_notes.py")
+    def filter(self, sample=None):
+        """Identify actual video notes by checking media type."""
+        args = ["--sample", str(sample)] if sample else []
+        return self.run_script("scripts/data_processing/identify_video_notes.py", args)
 
     def videos(self, limit=30):
         """Download videos."""
@@ -132,12 +133,12 @@ class VideoLLMCLI:
             df = pd.read_csv(media_file)
             print(f"✓ Media Notes: {len(df):,} notes")
 
-        video_file = data_dir / "filtered" / "likely_video_notes.csv"
+        video_file = data_dir / "filtered" / "verified_video_notes.csv"
         if video_file.exists():
             import pandas as pd
 
             df = pd.read_csv(video_file)
-            print(f"✓ Likely Video Notes: {len(df):,} notes")
+            print(f"✓ Verified Video Notes: {len(df):,} notes")
 
         # Videos
         videos_dir = data_dir / "videos"
@@ -161,7 +162,7 @@ class VideoLLMCLI:
 Available Commands:
 
   python main.py download                    Download & filter Community Notes
-  python main.py filter                      Filter for likely video notes  
+  python main.py filter [--sample N]         Identify actual video notes (checks media type)  
   python main.py videos [--limit N]          Download N videos (default: 30)
   python main.py dataset                     Create evaluation dataset ⭐
   python main.py evaluate [OPTIONS]          Evaluate Video LLMs 🎯
@@ -180,6 +181,12 @@ Examples:
 
   # Quick start - run everything
   python main.py pipeline
+
+  # Test video identification with sample
+  python main.py filter --sample 100
+
+  # Identify all videos (takes ~6 hours for 122K notes)
+  python main.py filter
 
   # Create dataset and evaluate with both models
   python main.py dataset
@@ -251,6 +258,13 @@ def main():
     )
 
     parser.add_argument(
+        "--sample",
+        type=int,
+        default=None,
+        help="Number of media notes to check (for filter command only)",
+    )
+
+    parser.add_argument(
         "--models",
         type=str,
         default="gemini,gpt4o",
@@ -264,7 +278,7 @@ def main():
     # Route commands
     commands = {
         "download": cli.download,
-        "filter": cli.filter,
+        "filter": lambda: cli.filter(args.sample),
         "videos": lambda: cli.videos(args.limit),
         "dataset": cli.dataset,
         "evaluate": lambda: cli.evaluate(args.models, args.limit),
