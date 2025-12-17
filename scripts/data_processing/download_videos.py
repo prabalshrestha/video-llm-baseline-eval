@@ -1,7 +1,7 @@
 """
 Download Sample Videos from Twitter
-Downloads videos from verified_video_notes.csv (or likely_video_notes.csv as fallback) using yt-dlp.
-For best results, run identify_video_notes.py first to get accurate video filtering.
+Downloads videos from media_metadata table in database using yt-dlp.
+Automatically skips already-downloaded videos unless --force is used.
 """
 
 import pandas as pd
@@ -10,6 +10,16 @@ import logging
 import subprocess
 import json
 import time
+import sys
+import os
+from dotenv import load_dotenv
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from database import get_session, MediaMetadata, Tweet
+
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -18,11 +28,23 @@ logger = logging.getLogger(__name__)
 
 
 class VideoDownloader:
-    def __init__(self, data_dir="data"):
+    def __init__(self, data_dir="data", force=False):
         self.data_dir = Path(data_dir)
         self.filtered_dir = self.data_dir / "filtered"
-        self.videos_dir = self.data_dir / "videos"
-        self.videos_dir.mkdir(exist_ok=True)
+
+        # Get video download path from environment variable or use default
+        video_path_env = os.getenv("VIDEO_DOWNLOAD_PATH")
+        if video_path_env:
+            self.videos_dir = Path(video_path_env)
+            logger.info(
+                f"Using custom video download path from .env: {self.videos_dir}"
+            )
+        else:
+            self.videos_dir = self.data_dir / "videos"
+            logger.info(f"Using default video download path: {self.videos_dir}")
+
+        self.videos_dir.mkdir(parents=True, exist_ok=True)
+        self.force = force  # Force re-download even if already downloaded
 
         # Create metadata file
         self.metadata = []
@@ -48,38 +70,66 @@ class VideoDownloader:
             logger.error(f"Error checking yt-dlp: {e}")
             return False
 
-    def load_video_notes(self, limit=None, use_verified=True):
-        """Load video notes from CSV.
-        
+    def load_video_notes(self, session, limit=None):
+        """Load video metadata from database.
+
         Args:
-            limit: Number of notes to load
-            use_verified: If True, use verified_video_notes.csv (accurate),
-                         if False, use likely_video_notes.csv (keyword-based)
+            session: Database session
+            limit: Number of videos to load
+
+        Returns:
+            List of MediaMetadata objects to download
         """
-        if use_verified:
-            filepath = self.filtered_dir / "verified_video_notes.csv"
-            if not filepath.exists():
-                logger.warning("verified_video_notes.csv not found, falling back to likely_video_notes.csv")
-                logger.warning("Run identify_video_notes.py first for accurate filtering!")
-                filepath = self.filtered_dir / "likely_video_notes.csv"
-        else:
-            filepath = self.filtered_dir / "likely_video_notes.csv"
-
         try:
-            df = pd.read_csv(filepath)
-            logger.info(f"Loaded {len(df)} video notes from {filepath.name}")
+            # Query videos from media_metadata table
+            query = session.query(MediaMetadata).filter(
+                MediaMetadata.media_type == "video"
+            )
 
-            if limit:
-                df = df.head(limit)
-                logger.info(f"Limited to first {limit} notes")
+            # Filter out already-downloaded videos (unless force mode)
+            if not self.force:
+                # Check if local_path exists and file actually exists
+                videos = query.all()
+                videos_to_download = []
 
-            return df
+                for video in videos:
+                    if video.local_path:
+                        # Check if file actually exists
+                        video_path = Path(video.local_path)
+                        if video_path.exists():
+                            continue  # Skip - already downloaded
+                    videos_to_download.append(video)
+
+                logger.info(f"Found {len(videos)} videos in database")
+                logger.info(
+                    f"Already downloaded: {len(videos) - len(videos_to_download)}"
+                )
+                logger.info(f"To download: {len(videos_to_download)}")
+            else:
+                videos_to_download = query.all()
+                logger.info(
+                    f"Force mode: Re-downloading all {len(videos_to_download)} videos"
+                )
+
+            if limit and len(videos_to_download) > limit:
+                videos_to_download = videos_to_download[:limit]
+                logger.info(f"Limited to first {limit} videos")
+
+            return videos_to_download
+
         except Exception as e:
-            logger.error(f"Failed to load video notes: {e}")
-            return None
+            logger.error(f"Failed to load video metadata from database: {e}")
+            return []
 
-    def download_video(self, tweet_id, index):
-        """Download a single video using yt-dlp."""
+    def download_video(self, media_metadata, index, session):
+        """Download a single video using yt-dlp and update database.
+
+        Args:
+            media_metadata: MediaMetadata object from database
+            index: Download index for naming
+            session: Database session for updating local_path
+        """
+        tweet_id = media_metadata.tweet_id
         url = f"https://twitter.com/i/status/{tweet_id}"
         output_template = str(self.videos_dir / f"video_{index:03d}_%(id)s.%(ext)s")
 
@@ -112,6 +162,14 @@ class VideoDownloader:
                     video_file = video_files[0]
                     logger.info(f"  ✓ Downloaded: {video_file.name}")
 
+                    # Update database with local_path
+                    try:
+                        media_metadata.local_path = str(video_file.absolute())
+                        session.commit()
+                    except Exception as e:
+                        logger.warning(f"  Failed to update database: {e}")
+                        session.rollback()
+
                     # Read metadata if available
                     info_file = video_file.with_suffix(".info.json")
                     metadata = {
@@ -119,6 +177,7 @@ class VideoDownloader:
                         "tweet_id": tweet_id,
                         "url": url,
                         "filename": video_file.name,
+                        "local_path": str(video_file.absolute()),
                         "downloaded": True,
                         "error": None,
                     }
@@ -195,66 +254,68 @@ class VideoDownloader:
     def run(self, limit=30):
         """Main execution."""
         logger.info("=" * 70)
-        logger.info(f"VIDEO DOWNLOADER - Downloading {limit} Sample Videos")
+        logger.info(f"VIDEO DOWNLOADER - Downloading up to {limit} Videos")
         logger.info("=" * 70)
 
         # Check yt-dlp
         if not self.check_ytdlp():
             return None
 
-        # Load video notes
-        logger.info("\nLoading video notes...")
-        df = self.load_video_notes(limit=limit)
+        with get_session() as session:
+            # Load video metadata from database
+            logger.info("\nQuerying videos from database...")
+            videos_to_download = self.load_video_notes(session, limit=limit)
 
-        if df is None or df.empty:
-            logger.error("No video notes to process")
-            return None
+            if not videos_to_download:
+                logger.info("No videos to download!")
+                return []
 
-        # Extract tweet IDs
-        tweet_ids = df["tweetId"].tolist()
-        logger.info(f"\nProcessing {len(tweet_ids)} tweets...")
+            logger.info(f"\nProcessing {len(videos_to_download)} videos...")
 
-        # Download videos
-        success_count = 0
-        fail_count = 0
+            # Download videos
+            success_count = 0
+            fail_count = 0
 
-        for i, tweet_id in enumerate(tweet_ids, 1):
-            if self.download_video(tweet_id, i):
-                success_count += 1
-            else:
-                fail_count += 1
+            for i, media_metadata in enumerate(videos_to_download, 1):
+                if self.download_video(media_metadata, i, session):
+                    success_count += 1
+                else:
+                    fail_count += 1
 
-            # Brief pause between downloads
-            if i < len(tweet_ids):
-                time.sleep(1)
+                # Brief pause between downloads
+                if i < len(videos_to_download):
+                    time.sleep(1)
 
-        # Save metadata
-        self.save_metadata()
+            # Save metadata
+            self.save_metadata()
 
-        # Summary
-        logger.info("\n" + "=" * 70)
-        logger.info("DOWNLOAD COMPLETE")
-        logger.info("=" * 70)
-        logger.info(f"Total attempted: {len(tweet_ids)}")
-        logger.info(
-            f"Successful: {success_count} ({success_count/len(tweet_ids)*100:.1f}%)"
-        )
-        logger.info(f"Failed: {fail_count} ({fail_count/len(tweet_ids)*100:.1f}%)")
-        logger.info(f"\nVideos saved to: {self.videos_dir}")
-        logger.info(f"Metadata: {self.metadata_file}")
+            # Summary
+            logger.info("\n" + "=" * 70)
+            logger.info("DOWNLOAD COMPLETE")
+            logger.info("=" * 70)
+            logger.info(f"Total attempted: {len(videos_to_download)}")
+            logger.info(
+                f"Successful: {success_count} ({success_count/len(videos_to_download)*100:.1f}%)"
+            )
+            logger.info(
+                f"Failed: {fail_count} ({fail_count/len(videos_to_download)*100:.1f}%)"
+            )
+            logger.info(f"\nVideos saved to: {self.videos_dir}")
+            logger.info(f"Metadata: {self.metadata_file}")
+            logger.info("Database updated with local_path for downloaded videos")
 
-        # List downloaded files
-        video_files = list(self.videos_dir.glob("video_*.mp4")) + list(
-            self.videos_dir.glob("video_*.webm")
-        )
+            # List downloaded files
+            video_files = list(self.videos_dir.glob("video_*.mp4")) + list(
+                self.videos_dir.glob("video_*.webm")
+            )
 
-        if video_files:
-            logger.info(f"\nDownloaded files ({len(video_files)}):")
-            for vf in sorted(video_files)[:10]:
-                size_mb = vf.stat().st_size / (1024 * 1024)
-                logger.info(f"  - {vf.name} ({size_mb:.1f} MB)")
-            if len(video_files) > 10:
-                logger.info(f"  ... and {len(video_files) - 10} more")
+            if video_files:
+                logger.info(f"\nDownloaded files ({len(video_files)}):")
+                for vf in sorted(video_files)[:10]:
+                    size_mb = vf.stat().st_size / (1024 * 1024)
+                    logger.info(f"  - {vf.name} ({size_mb:.1f} MB)")
+                if len(video_files) > 10:
+                    logger.info(f"  ... and {len(video_files) - 10} more")
 
         return self.metadata
 
@@ -264,7 +325,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Download sample videos from likely video notes"
+        description="Download videos from database (media_metadata table)"
     )
     parser.add_argument(
         "--limit",
@@ -272,14 +333,20 @@ def main():
         default=30,
         help="Number of videos to download (default: 30)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-download all videos, even if already downloaded",
+    )
     args = parser.parse_args()
 
-    downloader = VideoDownloader(data_dir="data")
+    downloader = VideoDownloader(data_dir="data", force=args.force)
     result = downloader.run(limit=args.limit)
 
     if result is not None:
         print(f"\n✓ Video download completed!")
         print(f"✓ Check data/videos/ directory")
+        print(f"✓ Database updated with local file paths")
     else:
         print("\n✗ Failed to download videos")
 

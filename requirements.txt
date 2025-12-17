@@ -26,6 +26,11 @@ sentence-transformers>=2.2.0
 # Progress bars and utilities
 tqdm>=4.65.0
 
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+psycopg2-binary>=2.9.0
+
 # Optional: Data analysis
 matplotlib>=3.7.0
 seaborn>=0.12.0

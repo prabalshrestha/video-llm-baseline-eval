@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
 Create Evaluation Dataset
-ONE script that creates the complete evaluation dataset.
-Handles everything: loading data, fetching tweets (if API available), creating output.
+Creates the complete evaluation dataset from database.
+Queries notes, tweets, and media_metadata tables to build the final dataset.
+
+Updated to use database instead of CSV files.
 """
 
 import json
@@ -16,6 +18,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from services.twitter_service import TwitterService
+from database import get_session, Note, Tweet, MediaMetadata
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -24,181 +27,172 @@ logger = logging.getLogger(__name__)
 
 
 class DatasetCreator:
-    """Creates the complete evaluation dataset in one go."""
+    """Creates the complete evaluation dataset from database."""
 
-    def __init__(self, data_dir: str = "data"):
+    def __init__(self, data_dir: str = "data", force_api_fetch: bool = False):
         self.data_dir = Path(data_dir)
-        self.videos_dir = self.data_dir / "videos"
-        self.filtered_dir = self.data_dir / "filtered"
         self.output_dir = self.data_dir / "evaluation"
         self.output_dir.mkdir(exist_ok=True)
+        self.force_api_fetch = force_api_fetch
 
-        self.twitter = TwitterService()
+        self.twitter = TwitterService(force=force_api_fetch)
 
-    def load_videos(self) -> List[Dict]:
-        """Load downloaded videos."""
-        videos_file = self.videos_dir / "downloaded_videos.json"
-
-        with open(videos_file, "r") as f:
-            videos = json.load(f)
-
-        downloaded = [v for v in videos if v.get("downloaded", False)]
-        logger.info(f"Loaded {len(downloaded)} downloaded videos")
-        return downloaded
-
-    def load_notes(self):
-        """Load community notes."""
-        try:
-            import pandas as pd
-
-            notes_file = self.filtered_dir / "verified_video_notes.csv"
-            df = pd.read_csv(notes_file)
-            logger.info(f"Loaded {len(df)} community notes")
-            return df
-        except ImportError:
-            logger.error("pandas not installed: pip install pandas")
-            return None
-
-    def load_video_metadata(self) -> Dict[str, Dict]:
-        """Load video info files for additional metadata."""
-        video_info = {}
-
-        for info_file in self.videos_dir.glob("*.info.json"):
-            try:
-                with open(info_file, "r") as f:
-                    data = json.load(f)
-                    video_id = info_file.stem.replace(".info", "")
-                    video_info[video_id] = data
-            except Exception as e:
-                logger.warning(f"Could not load {info_file.name}: {e}")
-
-        logger.info(f"Loaded {len(video_info)} video metadata files")
-        return video_info
-
-    def get_tweet_data(
-        self, tweet_ids: List[str], use_api: bool = True
-    ) -> Dict[str, Dict]:
+    def load_data_from_database(self, session) -> List[Dict]:
         """
-        Get tweet data. Try API first, fall back to video metadata.
-
-        Args:
-            tweet_ids: List of tweet IDs
-            use_api: Whether to try Twitter API
+        Load all data from database for videos with local_path set.
 
         Returns:
-            Dictionary of tweet data
+            List of dictionaries with joined data from notes, tweets, and media_metadata
         """
-        tweet_data = {}
+        # Query videos that have been downloaded (local_path is set)
+        query = (
+            session.query(MediaMetadata, Tweet, Note)
+            .join(Tweet, MediaMetadata.tweet_id == Tweet.tweet_id)
+            .join(Note, Tweet.tweet_id == Note.tweet_id)
+            .filter(MediaMetadata.local_path.isnot(None))
+            .filter(MediaMetadata.media_type == "video")
+        )
 
-        # Try Twitter API if requested and available
-        if use_api and self.twitter.is_available():
-            logger.info("\n🔑 Twitter API available - fetching complete tweet data...")
-            tweet_data = self.twitter.fetch_tweets(tweet_ids)
+        results = query.all()
+        logger.info(f"Found {len(results)} downloaded videos with notes in database")
 
-            if tweet_data:
-                logger.info(f"✓ Fetched {len(tweet_data)} tweets from API")
-                return tweet_data
-            else:
-                logger.warning("⚠️  API fetch failed, using video metadata")
-
-        # Fall back to video metadata
-        logger.info("📹 Using video metadata for tweet information")
-        return {}
-
-    def create_dataset(
-        self, videos: List[Dict], notes_df, video_metadata: Dict, tweet_data: Dict
-    ) -> List[Dict]:
-        """Create the complete dataset."""
-        import pandas as pd
-
-        dataset = []
-
-        # Create notes lookup
-        notes_by_tweet = {}
-        for _, note in notes_df.iterrows():
-            tweet_id = str(note["tweetId"])
-            notes_by_tweet[tweet_id] = note
-
-        for video in videos:
-            tweet_id = str(video.get("tweet_id", ""))
-            note = notes_by_tweet.get(tweet_id)
-
-            if note is None:
-                logger.warning(f"No note for {video.get('filename')}")
+        # Convert to list of dicts for easier processing
+        data = []
+        for media, tweet, note in results:
+            # Check if file actually exists
+            if media.local_path and not Path(media.local_path).exists():
+                logger.warning(f"Video file not found: {media.local_path}")
                 continue
 
-            # Get video metadata
-            video_basename = Path(video.get("filename", "")).stem
-            video_info = video_metadata.get(video_basename, {})
+            data.append(
+                {
+                    "media": media,
+                    "tweet": tweet,
+                    "note": note,
+                }
+            )
 
-            # Get tweet data (from API or video metadata)
-            api_tweet = tweet_data.get(tweet_id, {})
+        logger.info(f"Loaded {len(data)} complete records (with existing video files)")
+        return data
+
+    def fetch_missing_tweet_data(self, session, data: List[Dict]) -> int:
+        """
+        Fetch tweet API data for tweets that don't have it yet.
+
+        Args:
+            session: Database session
+            data: List of data dicts from load_data_from_database
+
+        Returns:
+            Number of tweets fetched
+        """
+        # Find tweet IDs without raw_api_data
+        tweets_without_api = [
+            str(d["tweet"].tweet_id) for d in data if d["tweet"].raw_api_data is None
+        ]
+
+        if not tweets_without_api:
+            logger.info("All tweets already have API data")
+            return 0
+
+        logger.info(f"Found {len(tweets_without_api)} tweets without API data")
+
+        if not self.twitter.is_available():
+            logger.warning("Twitter API not available - skipping API fetch")
+            return 0
+
+        logger.info("Fetching missing tweet data from Twitter API...")
+        self.twitter.fetch_tweets(tweets_without_api, save_to_db=True)
+
+        # Refresh the session to get updated data
+        session.expire_all()
+
+        return len(tweets_without_api)
+
+    def create_dataset(self, data: List[Dict]) -> List[Dict]:
+        """
+        Create the complete dataset from database records.
+
+        Args:
+            data: List of dicts with 'media', 'tweet', 'note' keys
+
+        Returns:
+            List of dataset entries
+        """
+        dataset = []
+
+        for idx, record in enumerate(data, 1):
+            media = record["media"]
+            tweet = record["tweet"]
+            note = record["note"]
+
+            # Get filename from local_path
+            video_path = Path(media.local_path) if media.local_path else None
+            filename = video_path.name if video_path else f"video_{idx:03d}"
+
+            # Convert duration from ms to seconds
+            duration_seconds = media.duration_ms / 1000.0 if media.duration_ms else 0
 
             # Build entry
             entry = {
                 "video": {
-                    "filename": video.get("filename", ""),
-                    "index": video.get("index", 0),
-                    "duration_seconds": video.get("duration", 0),
-                    "path": f"data/videos/{video.get('filename', '')}",
-                    "title": video.get("title", ""),
-                    "uploader": video.get("uploader", ""),
+                    "filename": filename,
+                    "index": idx,
+                    "duration_seconds": duration_seconds,
+                    "path": str(video_path) if video_path else "",
+                    "title": media.title or "",
+                    "uploader": media.uploader or "",
+                    "width": media.width,
+                    "height": media.height,
                 },
                 "tweet": {
-                    "tweet_id": tweet_id,
-                    "url": video.get("url", ""),
-                    # Use API data if available, fall back to video metadata
-                    "text": api_tweet.get("text", video_info.get("description", "")),
-                    "author_name": api_tweet.get(
-                        "author_name", video.get("uploader", "")
-                    ),
-                    "author_username": api_tweet.get(
-                        "author_username", video_info.get("uploader_id", "")
-                    ),
-                    "author_verified": api_tweet.get("author_verified", False),
-                    "created_at": api_tweet.get(
-                        "created_at", video_info.get("upload_date", "")
+                    "tweet_id": str(tweet.tweet_id),
+                    "url": f"https://twitter.com/i/status/{tweet.tweet_id}",
+                    "text": tweet.text or "",
+                    "author_name": tweet.author_name or "",
+                    "author_username": tweet.author_username or "",
+                    "author_verified": tweet.author_verified or False,
+                    "created_at": (
+                        tweet.created_at.isoformat() if tweet.created_at else ""
                     ),
                     "engagement": {
-                        "likes": api_tweet.get(
-                            "likes", video_info.get("like_count", 0)
-                        ),
-                        "retweets": api_tweet.get(
-                            "retweets", video_info.get("repost_count", 0)
-                        ),
-                        "replies": api_tweet.get(
-                            "replies", video_info.get("comment_count", 0)
-                        ),
-                        "views": video_info.get("view_count", 0),
+                        "likes": tweet.likes or 0,
+                        "retweets": tweet.retweets or 0,
+                        "replies": tweet.replies or 0,
+                        "quotes": tweet.quotes or 0,
                     },
                 },
                 "community_note": {
-                    "note_id": str(note.get("noteId", "")),
-                    "classification": note.get("classification", ""),
-                    "summary": note.get("summary", ""),
-                    "is_misleading": note.get("classification", "")
+                    "note_id": str(note.note_id),
+                    "classification": note.classification or "",
+                    "summary": note.summary or "",
+                    "is_misleading": note.classification
                     == "MISINFORMED_OR_POTENTIALLY_MISLEADING",
-                    "created_at_millis": int(note.get("createdAtMillis", 0)),
+                    "created_at_millis": note.created_at_millis,
                     "reasons": {
-                        "factual_error": int(note.get("misleadingFactualError", 0)),
-                        "manipulated_media": int(
-                            note.get("misleadingManipulatedMedia", 0)
-                        ),
-                        "missing_context": int(
-                            note.get("misleadingMissingImportantContext", 0)
-                        ),
-                        "outdated_info": int(
-                            note.get("misleadingOutdatedInformation", 0)
-                        ),
-                        "unverified_claim": int(
-                            note.get("misleadingUnverifiedClaimAsFact", 0)
-                        ),
+                        "factual_error": note.misleading_factual_error or 0,
+                        "manipulated_media": note.misleading_manipulated_media or 0,
+                        "missing_context": note.misleading_missing_important_context
+                        or 0,
+                        "outdated_info": note.misleading_outdated_information or 0,
+                        "unverified_claim": note.misleading_unverified_claim_as_fact
+                        or 0,
+                        "satire": note.misleading_satire or 0,
                     },
+                    "not_misleading_reasons": {
+                        "factually_correct": note.not_misleading_factually_correct or 0,
+                        "clearly_satire": note.not_misleading_clearly_satire or 0,
+                        "personal_opinion": note.not_misleading_personal_opinion or 0,
+                    },
+                    "believable": note.believable,
+                    "harmful": note.harmful,
+                    "validation_difficulty": note.validation_difficulty,
                 },
                 "metadata": {
-                    "sample_id": f"video_{video.get('index', 0):03d}",
-                    "has_api_data": bool(api_tweet),
+                    "sample_id": f"video_{idx:03d}",
+                    "has_api_data": tweet.raw_api_data is not None,
                     "created_at": datetime.now().isoformat(),
+                    "media_type": media.media_type,
                 },
             }
 
@@ -267,62 +261,79 @@ class DatasetCreator:
 
     def run(self, use_api: bool = True) -> bool:
         """
-        Create the complete dataset.
+        Create the complete dataset from database.
 
         Args:
-            use_api: Whether to use Twitter API if available
+            use_api: Whether to fetch missing tweet API data
 
         Returns:
             Success status
         """
         logger.info("=" * 70)
-        logger.info("CREATING EVALUATION DATASET")
+        logger.info("CREATING EVALUATION DATASET FROM DATABASE")
         logger.info("=" * 70)
 
         try:
-            # Load all data
-            logger.info("\n📂 Loading data...")
-            videos = self.load_videos()
-            notes_df = self.load_notes()
-            video_metadata = self.load_video_metadata()
+            with get_session() as session:
+                # Load all data from database
+                logger.info("\n📂 Loading data from database...")
+                data = self.load_data_from_database(session)
 
-            if notes_df is None:
-                return False
+                if not data:
+                    logger.error("No downloaded videos found in database!")
+                    logger.info("\n💡 Make sure you have:")
+                    logger.info("   1. Imported notes to database")
+                    logger.info("   2. Identified video notes (media_metadata)")
+                    logger.info("   3. Downloaded videos (local_path set)")
+                    return False
 
-            # Get tweet data
-            tweet_ids = [str(v.get("tweet_id", "")) for v in videos]
-            tweet_data = self.get_tweet_data(tweet_ids, use_api=use_api)
+                # Fetch missing tweet API data if requested
+                if use_api:
+                    logger.info("\n🔑 Checking for missing tweet API data...")
+                    fetched = self.fetch_missing_tweet_data(session, data)
+                    if fetched > 0:
+                        logger.info(f"Fetched API data for {fetched} tweets")
+                        # Reload data to get updated tweet info
+                        data = self.load_data_from_database(session)
 
-            # Create dataset
-            logger.info("\n🔨 Creating dataset...")
-            dataset = self.create_dataset(videos, notes_df, video_metadata, tweet_data)
-            logger.info(f"Created {len(dataset)} samples")
+                # Create dataset
+                logger.info("\n🔨 Creating dataset...")
+                dataset = self.create_dataset(data)
+                logger.info(f"Created {len(dataset)} samples")
 
-            # Save
-            logger.info("\n💾 Saving dataset...")
-            self.save_dataset(dataset)
+                # Save
+                logger.info("\n💾 Saving dataset...")
+                self.save_dataset(dataset)
 
-            # Summary
-            logger.info("\n" + "=" * 70)
-            logger.info("✅ SUCCESS!")
-            logger.info("=" * 70)
-            logger.info(f"Total samples: {len(dataset)}")
-            logger.info(
-                f"With API data: {sum(1 for d in dataset if d['metadata']['has_api_data'])}"
-            )
-            logger.info(
-                f"Misleading: {sum(1 for d in dataset if d['community_note']['is_misleading'])}"
-            )
-            logger.info(f"\nOutput: {self.output_dir}/dataset.json")
-            logger.info(f"        {self.output_dir}/dataset.csv")
+                # Summary
+                logger.info("\n" + "=" * 70)
+                logger.info("✅ SUCCESS!")
+                logger.info("=" * 70)
+                logger.info(f"Total samples: {len(dataset)}")
+                logger.info(
+                    f"With API data: {sum(1 for d in dataset if d['metadata']['has_api_data'])}"
+                )
+                logger.info(
+                    f"Misleading: {sum(1 for d in dataset if d['community_note']['is_misleading'])}"
+                )
+                logger.info(f"\nOutput: {self.output_dir}/dataset.json")
+                logger.info(f"        {self.output_dir}/dataset.csv")
 
-            if not tweet_data and use_api:
-                logger.info("\n💡 To get complete tweet data:")
-                logger.info("   1. Get Twitter API credentials")
-                logger.info("   2. Add TWITTER_BEARER_TOKEN to .env")
-                logger.info("   3. Run again")
+                missing_api = sum(
+                    1 for d in dataset if not d["metadata"]["has_api_data"]
+                )
+                if missing_api > 0:
+                    logger.info(
+                        f"\n💡 {missing_api} samples don't have Twitter API data"
+                    )
+                    if not use_api:
+                        logger.info("   Run with --use-api to fetch missing data")
+                    elif not self.twitter.is_available():
+                        logger.info(
+                            "   Add TWITTER_BEARER_TOKEN to .env to fetch API data"
+                        )
 
-            return True
+                return True
 
         except Exception as e:
             logger.error(f"Failed to create dataset: {e}")
@@ -336,20 +347,28 @@ def main():
     """Main entry point."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Create evaluation dataset")
+    parser = argparse.ArgumentParser(
+        description="Create evaluation dataset from database"
+    )
     parser.add_argument(
         "--no-api",
         action="store_true",
         help="Don't use Twitter API even if available",
     )
+    parser.add_argument(
+        "--force-api-fetch",
+        action="store_true",
+        help="Force re-fetch all tweet data from API, even if already in database",
+    )
     args = parser.parse_args()
 
-    creator = DatasetCreator()
+    creator = DatasetCreator(force_api_fetch=args.force_api_fetch)
     success = creator.run(use_api=not args.no_api)
 
     if success:
-        print("\n✅ Dataset created successfully!")
+        print("\n✅ Dataset created successfully from database!")
         print("📁 Check data/evaluation/dataset.json")
+        print("📁 Check data/evaluation/dataset.csv")
     else:
         print("\n❌ Failed to create dataset")
         sys.exit(1)

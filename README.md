@@ -19,6 +19,68 @@ python main.py dataset            # Create evaluation dataset ⭐
 python main.py status             # Check your data
 ```
 
+## Database-Powered Pipeline 🔄
+
+**NEW:** All scripts now use PostgreSQL database for efficient data management!
+
+### Benefits
+
+- ✅ **Smart Skip Logic**: Automatically skips already-processed data
+- ✅ **No Redundant API Calls**: Saves Twitter API quota
+- ✅ **Single Source of Truth**: No CSV sync issues
+- ✅ **Easy Querying**: SQL joins across notes, tweets, and videos
+- ✅ **Thread-Safe**: Proper session management for parallel processing
+- ✅ **Production-Ready**: All critical SQLAlchemy issues resolved
+
+### Quick Setup
+
+```bash
+# 1. Install PostgreSQL (if not already installed)
+brew install postgresql  # macOS
+# or
+sudo apt install postgresql  # Linux
+
+# 2. Create database
+createdb video_llm_eval
+
+# 3. Set environment variables
+export DATABASE_URL='postgresql://localhost/video_llm_eval'
+
+# Optional: Set custom video download path (useful for different drives/servers)
+# export VIDEO_DOWNLOAD_PATH='/mnt/external_drive/videos'
+
+# 4. Initialize database and import data
+python setup_database.py --run-migrations --import-notes
+
+# 5. Run pipeline (skips existing data automatically)
+python scripts/data_processing/identify_video_notes.py
+python scripts/data_processing/download_videos.py --limit 50
+python scripts/data_processing/create_dataset.py
+```
+
+### Force Options (when needed)
+
+```bash
+# Force re-process everything
+python scripts/data_processing/identify_video_notes.py --force
+python scripts/data_processing/download_videos.py --force
+python scripts/data_processing/create_dataset.py --force-api-fetch
+```
+
+### Database Schema
+
+**3 Tables:**
+
+1. **`notes`** - All 23 columns from raw Community Notes TSV
+2. **`tweets`** - Tweet metadata with individual fields + `raw_api_data` (JSONB)
+3. **`media_metadata`** - Video/image metadata from yt-dlp (duration, formats, etc.)
+
+**Key Features:**
+- Foreign key relationships via `tweet_id`
+- JSONB columns for flexible raw data storage
+- Indexed for fast queries
+- SQLAlchemy ORM + Alembic migrations
+
 ## Project Goal
 
 Evaluate Video LLMs' ability to:
@@ -134,6 +196,102 @@ print(video.exists)              # True/False
 - **dataset.json** - Your complete evaluation dataset ⭐
 - **dataset.csv** - Same data in CSV format
 
+## Database Details
+
+### Schema
+
+**`notes` Table (23 columns):**
+- All raw columns from Community Notes TSV
+- Indexed on `tweet_id`, `is_media_note`
+- ~2.5M+ rows from Community Notes dataset
+
+**`tweets` Table:**
+- Individual fields: `tweet_id`, `text`, `author_*`, `likes`, `retweets`, etc.
+- `raw_api_data` (JSONB): Complete Twitter API response for full data preservation
+- Indexed on `tweet_id` (primary key)
+
+**`media_metadata` Table:**
+- Scraped metadata from yt-dlp for all media notes (videos and images)
+- Fields: `media_id`, `media_type`, `title`, `description`, `uploader`, `duration_ms`, `width`, `height`, `formats` (JSONB), `local_path`
+- Links via `tweet_id` foreign key
+
+### Query Examples
+
+```python
+from database import get_session
+from database.models import Note, Tweet, MediaMetadata
+
+# Get all video notes with tweet data
+with get_session() as session:
+    videos = session.query(Note, Tweet, MediaMetadata).join(
+        Tweet, Note.tweet_id == Tweet.tweet_id
+    ).join(
+        MediaMetadata, Note.tweet_id == MediaMetadata.tweet_id
+    ).filter(MediaMetadata.media_type == 'video').all()
+
+# Get engagement stats
+from database.queries import get_engagement_stats
+with get_session() as session:
+    stats = get_engagement_stats(session)
+    print(stats)
+```
+
+### Configuration Options
+
+**Custom Video Download Path:**
+
+By default, videos are downloaded to `data/videos/`. To store videos on a different drive or location (useful for servers with limited space), set the `VIDEO_DOWNLOAD_PATH` environment variable:
+
+```bash
+# In your .env file:
+VIDEO_DOWNLOAD_PATH=/mnt/external_drive/videos
+
+# Or export directly:
+export VIDEO_DOWNLOAD_PATH=/mnt/external_drive/videos
+
+# Then run download script normally:
+python scripts/data_processing/download_videos.py --limit 50
+```
+
+**Benefits:**
+- Store videos on external drive with more space
+- Use network-attached storage (NAS)
+- Separate data and video storage on servers
+- Easily switch between different storage locations
+
+**Note:** The path will be created automatically if it doesn't exist. Make sure you have write permissions for the specified path.
+
+### Troubleshooting
+
+**Connection Issues:**
+```bash
+# Check PostgreSQL is running
+pg_ctl status
+
+# Start PostgreSQL
+brew services start postgresql  # macOS
+sudo service postgresql start   # Linux
+```
+
+**Import Errors:**
+```bash
+# Re-import data
+python setup_database.py --import-notes --import-tweets
+```
+
+**Video Download Path Issues:**
+```bash
+# Check if path exists and is writable
+mkdir -p /your/custom/path
+chmod u+w /your/custom/path
+
+# Test with absolute path
+export VIDEO_DOWNLOAD_PATH=/absolute/path/to/videos
+python scripts/data_processing/download_videos.py --limit 1
+```
+
+See [`database/README.md`](database/README.md) for more examples and helper functions.
+
 ## Dataset Structure
 
 The dataset includes **all necessary fields** for evaluation:
@@ -225,11 +383,13 @@ Uses `yt-dlp` to download metadata and checks `_type` field. ~95-99% accurate.
 - ✅ Parallel processing for efficiency
 
 **How it works:**
+
 1. Downloads only metadata (info.json) for each media note
 2. Checks the `_type` field from Twitter's actual media data
 3. Keeps only notes where `_type == "video"`
 
 **Usage:**
+
 ```bash
 # Test with 100 notes
 python main.py filter --sample 100
@@ -256,13 +416,26 @@ python main.py filter
 ### Setup
 
 1. **Install evaluation dependencies:**
+
 ```bash
 pip install -r requirements.txt
 ```
 
-2. **Configure API keys:**
-Create a `.env` file in the project root:
+2. **Configure environment variables:**
+   Create a `.env` file in the project root:
+
 ```bash
+# Database (required for database-powered pipeline)
+DATABASE_URL=postgresql://localhost/video_llm_eval
+
+# Video Download Path (optional - useful for storing videos on external drive/server)
+# If not set, defaults to data/videos/
+# VIDEO_DOWNLOAD_PATH=/mnt/external_drive/videos
+
+# Twitter API (optional - for fetching tweet data)
+# TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
+
+# LLM API Keys (required for evaluation)
 # Get Gemini API key at: https://ai.google.dev/
 GEMINI_API_KEY=your_gemini_api_key_here
 
@@ -271,6 +444,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 3. **Test setup:**
+
 ```bash
 python scripts/evaluation/test_evaluation_setup.py
 ```
@@ -278,6 +452,7 @@ python scripts/evaluation/test_evaluation_setup.py
 ### Running Evaluation
 
 **Quick start:**
+
 ```bash
 # Evaluate with both models on all videos
 python main.py evaluate
@@ -293,6 +468,7 @@ python main.py evaluate --models gemini,gpt4o
 ### Output
 
 The evaluation generates:
+
 - **`llm_results_{timestamp}.json`** - Complete results with all metrics
 - **`evaluation_summary_{timestamp}.txt`** - Human-readable summary report
 
@@ -304,6 +480,7 @@ The evaluation generates:
 ### Metrics
 
 The evaluation compares LLM outputs with human Community Notes using:
+
 - **ROUGE scores** - Text overlap (ROUGE-1, ROUGE-2, ROUGE-L)
 - **BLEU score** - Precision-focused similarity
 - **Semantic similarity** - Meaning-based comparison using embeddings
