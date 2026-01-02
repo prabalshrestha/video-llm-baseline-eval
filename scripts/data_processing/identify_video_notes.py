@@ -77,12 +77,14 @@ class VideoNoteIdentifier:
                 "--no-warnings",
                 "--skip-download",  # Don't download the video!
                 "--write-info-json",  # Only write metadata
+                "--socket-timeout",
+                "5",  # Fail fast on network issues
                 "-o",
                 output_template,
                 url,
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
             if result.returncode == 0:
                 # Find the info.json file
@@ -97,9 +99,9 @@ class VideoNoteIdentifier:
                             info = json.load(f)
                             media_type = info.get("_type", None)
 
-                        # Save to database if requested and it's a video
+                        # Save to database if requested (all media types, not just videos)
                         # IMPORTANT: Create a new session for thread-safety
-                        if save_to_db and media_type == "video":
+                        if save_to_db and media_type:
                             try:
                                 # Create thread-local session
                                 with get_session() as thread_session:
@@ -167,14 +169,14 @@ class VideoNoteIdentifier:
             logger.debug(f"Error checking tweet {tweet_id}: {e}")
             return None
 
-    def identify_videos_batch(self, df, batch_size=100, max_workers=5):
+    def identify_videos_batch(self, df, batch_size=500, max_workers=20):
         """
         Process media notes in batches to identify which are actually videos.
 
         Args:
             df: DataFrame with media notes
-            batch_size: Number of tweets to check in one batch
-            max_workers: Number of parallel workers
+            batch_size: Number of tweets to check in one batch (default: 500)
+            max_workers: Number of parallel workers (default: 20)
 
         Note:
             Each worker thread creates its own database session for thread-safety.
@@ -262,7 +264,9 @@ class VideoNoteIdentifier:
         with get_session() as session:
             # Load media notes from database
             logger.info("\nQuerying media notes from database...")
-            media_notes_query = session.query(Note).filter(Note.is_media_note == True).all()
+            media_notes_query = (
+                session.query(Note).filter(Note.is_media_note == True).all()
+            )
             logger.info(f"Found {len(media_notes_query)} media notes in database")
 
             # Get tweet IDs that already have media_metadata (unless force mode)
