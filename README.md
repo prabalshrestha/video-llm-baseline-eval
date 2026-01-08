@@ -43,20 +43,40 @@ sudo apt install postgresql  # Linux
 # 2. Create database
 createdb video_llm_eval
 
-# 3. Set environment variables
-export DATABASE_URL='postgresql://localhost/video_llm_eval'
+# 3. Set environment variables in .env file
+echo 'DATABASE_URL="postgresql://localhost/video_llm_eval"' >> .env
 
 # Optional: Set custom video download path (useful for different drives/servers)
 # export VIDEO_DOWNLOAD_PATH='/mnt/external_drive/videos'
 
-# 4. Initialize database and import data
-python setup_database.py --run-migrations --import-notes
+# 4. Initialize database
+python3 setup_database.py
 
-# 5. Run pipeline (skips existing data automatically)
+# 5. Import existing data (if you have CSV exports)
+./import_all_data.sh
+
+# 6. Run pipeline (skips existing data automatically)
 python scripts/data_processing/identify_video_notes.py
 python scripts/data_processing/download_videos.py --limit 50
 python scripts/data_processing/create_dataset.py
 ```
+
+### Import Existing Data
+
+If you have CSV exports from a previous run:
+
+```bash
+# Quick import (auto-detects latest files)
+./import_all_data.sh
+
+# Or with options
+python3 import_from_exports.py --exports-dir data/exports
+
+# Verify import
+python3 test_import.py
+```
+
+See **[QUICK_START.md](QUICK_START.md)** for 3-command setup or **[DATABASE_IMPORT.md](DATABASE_IMPORT.md)** for detailed import guide.
 
 ### Force Options (when needed)
 
