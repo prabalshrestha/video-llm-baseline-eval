@@ -28,7 +28,9 @@ logger = logging.getLogger(__name__)
 
 
 class VideoDownloader:
-    def __init__(self, data_dir="data", force=False):
+    def __init__(
+        self, data_dir="data", force=False, random_sample=False, random_seed=42
+    ):
         self.data_dir = Path(data_dir)
         self.filtered_dir = self.data_dir / "filtered"
 
@@ -45,6 +47,8 @@ class VideoDownloader:
 
         self.videos_dir.mkdir(parents=True, exist_ok=True)
         self.force = force  # Force re-download even if already downloaded
+        self.random_sample = random_sample  # Enable random sampling
+        self.random_seed = random_seed  # Seed for reproducibility
 
         # Create metadata file
         self.metadata = []
@@ -111,9 +115,17 @@ class VideoDownloader:
                     f"Force mode: Re-downloading all {len(videos_to_download)} videos"
                 )
 
+            # Apply random sampling if enabled
+            if self.random_sample and len(videos_to_download) > 0:
+                import random
+
+                random.seed(self.random_seed)
+                random.shuffle(videos_to_download)
+                logger.info(f"Random sampling enabled (seed: {self.random_seed})")
+
             if limit and len(videos_to_download) > limit:
                 videos_to_download = videos_to_download[:limit]
-                logger.info(f"Limited to first {limit} videos")
+                logger.info(f"Limited to {limit} videos")
 
             return videos_to_download
 
@@ -338,9 +350,25 @@ def main():
         action="store_true",
         help="Force re-download all videos, even if already downloaded",
     )
+    parser.add_argument(
+        "--random",
+        action="store_true",
+        help="Enable random sampling for diverse video selection",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducible sampling (default: 42)",
+    )
     args = parser.parse_args()
 
-    downloader = VideoDownloader(data_dir="data", force=args.force)
+    downloader = VideoDownloader(
+        data_dir="data",
+        force=args.force,
+        random_sample=args.random,
+        random_seed=args.seed,
+    )
     result = downloader.run(limit=args.limit)
 
     if result is not None:

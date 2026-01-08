@@ -57,7 +57,7 @@ python3 setup_database.py
 
 # 6. Run pipeline (skips existing data automatically)
 python scripts/data_processing/identify_video_notes.py
-python scripts/data_processing/download_videos.py --limit 50
+python scripts/data_processing/download_videos.py --limit 50 --random  # Random sampling for diversity
 python scripts/data_processing/create_dataset.py
 ```
 
@@ -87,6 +87,25 @@ python scripts/data_processing/download_videos.py --force
 python scripts/data_processing/create_dataset.py --force-api-fetch
 ```
 
+### Random Sampling (for diversity)
+
+Both video downloads and dataset creation support random sampling to increase diversity:
+
+```bash
+# Download videos with random sampling
+python scripts/data_processing/download_videos.py --limit 50 --random --seed 42
+
+# Create dataset with random sampling
+python scripts/data_processing/create_dataset.py --sample-size 100 --random-seed 42
+```
+
+**Benefits:**
+
+- Increases diversity across different topics and content types
+- Avoids biases from sequential selection
+- Reproducible with fixed seed values
+- Recommended for evaluation datasets
+
 ### Database Schema
 
 **3 Tables:**
@@ -96,6 +115,7 @@ python scripts/data_processing/create_dataset.py --force-api-fetch
 3. **`media_metadata`** - Video/image metadata from yt-dlp (duration, formats, etc.)
 
 **Key Features:**
+
 - Foreign key relationships via `tweet_id`
 - JSONB columns for flexible raw data storage
 - Indexed for fast queries
@@ -221,16 +241,19 @@ print(video.exists)              # True/False
 ### Schema
 
 **`notes` Table (23 columns):**
+
 - All raw columns from Community Notes TSV
 - Indexed on `tweet_id`, `is_media_note`
 - ~2.5M+ rows from Community Notes dataset
 
 **`tweets` Table:**
+
 - Individual fields: `tweet_id`, `text`, `author_*`, `likes`, `retweets`, etc.
 - `raw_api_data` (JSONB): Complete Twitter API response for full data preservation
 - Indexed on `tweet_id` (primary key)
 
 **`media_metadata` Table:**
+
 - Scraped metadata from yt-dlp for all media notes (videos and images)
 - Fields: `media_id`, `media_type`, `title`, `description`, `uploader`, `duration_ms`, `width`, `height`, `formats` (JSONB), `local_path`
 - Links via `tweet_id` foreign key
@@ -274,6 +297,7 @@ python scripts/data_processing/download_videos.py --limit 50
 ```
 
 **Benefits:**
+
 - Store videos on external drive with more space
 - Use network-attached storage (NAS)
 - Separate data and video storage on servers
@@ -284,6 +308,7 @@ python scripts/data_processing/download_videos.py --limit 50
 ### Troubleshooting
 
 **Connection Issues:**
+
 ```bash
 # Check PostgreSQL is running
 pg_ctl status
@@ -294,12 +319,14 @@ sudo service postgresql start   # Linux
 ```
 
 **Import Errors:**
+
 ```bash
 # Re-import data
 python setup_database.py --import-notes --import-tweets
 ```
 
 **Video Download Path Issues:**
+
 ```bash
 # Check if path exists and is writable
 mkdir -p /your/custom/path
@@ -323,6 +350,7 @@ python3 fix_video_paths.py
 ```
 
 This updates paths in the database to match your current `VIDEO_DOWNLOAD_PATH` or default location. The script:
+
 - ✅ Extracts filenames from old paths
 - ✅ Reconstructs paths using current environment
 - ✅ Only updates if files actually exist
