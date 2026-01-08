@@ -77,20 +77,28 @@ Running database migrations...
 ✓ Database setup complete!
 ```
 
-### 5. Transfer Export Files (From Local Machine)
+### 5. Transfer Data Files (From Local Machine)
 
-From your **local machine**, transfer the export files:
+From your **local machine**, use the sync scripts:
 
 ```bash
-# Transfer exports directory
+# Quick sync (exports only - fastest)
+./quick_sync.sh
+
+# Sync everything (exports, videos, raw, filtered)
+./quick_sync.sh --all
+
+# Or use the advanced sync script
+./sync_to_server.sh --dry-run  # Preview first
+./sync_to_server.sh            # Then sync
+
+# Manual rsync (alternative)
 rsync -avz --progress \
     data/exports/ \
     prabalshrestha@eng402924:~/video-llm-baseline-eval/data/exports/
-
-# Or use scp
-scp data/exports/*.csv \
-    prabalshrestha@eng402924:~/video-llm-baseline-eval/data/exports/
 ```
+
+See **[SYNC_GUIDE.md](SYNC_GUIDE.md)** for detailed sync documentation.
 
 ### 6. Import Data
 

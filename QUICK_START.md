@@ -31,6 +31,7 @@ python3 test_import.py
 ## Done! 🎉
 
 Your database now contains:
+
 - Tweets with engagement metrics
 - Community Notes with classifications
 - Media metadata from yt-dlp
@@ -40,22 +41,26 @@ Your database now contains:
 ### New Files
 
 1. **`import_from_exports.py`** - Main import script
+
    - Reads CSV files from `data/exports/`
    - Handles data type conversions
    - Uses bulk upserts for efficiency
    - Shows progress bars
 
 2. **`import_all_data.sh`** - Quick wrapper script
+
    - Activates venv
    - Runs import with defaults
    - Shows summary
 
 3. **`test_import.py`** - Verification script
+
    - Counts records
    - Checks relationships
    - Shows data quality stats
 
 4. **`DATABASE_IMPORT.md`** - Detailed documentation
+
    - All import options
    - Troubleshooting guide
    - Performance tips
@@ -153,25 +158,29 @@ python3 import_from_exports.py --skip-tweets --skip-notes  # Media last
 
 ## Remote Server
 
-On your remote server (eng402924):
+Transfer data and import on your remote server (eng402924):
 
 ```bash
-# 1. Transfer files
-rsync -avz data/exports/ user@eng402924:~/video-llm-baseline-eval/data/exports/
+# 1. Sync data from local machine
+./quick_sync.sh              # Exports only (fast)
+# or
+./quick_sync.sh --all        # Everything
 
 # 2. SSH to server
-ssh user@eng402924
+ssh prabalshrestha@eng402924
 
 # 3. Run import
 cd ~/video-llm-baseline-eval
-source venv/bin/activate
 ./import_all_data.sh
 
 # 4. Verify
 python3 test_import.py
 ```
 
-See `REMOTE_SERVER_SETUP.md` for detailed server instructions.
+See:
+
+- **[SYNC_GUIDE.md](SYNC_GUIDE.md)** for sync options
+- **[REMOTE_SERVER_SETUP.md](REMOTE_SERVER_SETUP.md)** for detailed server setup
 
 ## Features
 
@@ -181,17 +190,18 @@ See `REMOTE_SERVER_SETUP.md` for detailed server instructions.
 ✅ **Error handling** - Continues on errors, logs details  
 ✅ **Batch processing** - Efficient bulk inserts  
 ✅ **Data validation** - Type checking and conversions  
-✅ **Foreign key handling** - Correct import order  
+✅ **Foreign key handling** - Correct import order
 
 ## Next Steps
 
 After successful import:
 
 1. **Query your data**:
+
    ```python
    from database.config import SessionLocal
    from database.models import Tweet, Note
-   
+
    session = SessionLocal()
    tweets = session.query(Tweet).filter(Tweet.likes > 1000).all()
    ```
@@ -227,4 +237,3 @@ python3 test_import.py
 ---
 
 **Questions?** Check the detailed guides or review the error logs.
-
