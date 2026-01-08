@@ -71,6 +71,9 @@ class Note(Base):
     summary = Column(Text, nullable=True)
     is_media_note = Column(Boolean, nullable=True, index=True)
     
+    # URL for direct access to note on Twitter
+    note_url = Column(String(500), nullable=True)
+    
     # Relationships
     tweet = relationship("Tweet", back_populates="notes")
     
@@ -113,6 +116,9 @@ class Tweet(Base):
     # Raw API data (JSONB for complete data preservation)
     raw_api_data = Column(JSONB, nullable=True)
     api_fetched_at = Column(DateTime, nullable=True)
+    
+    # URL for direct access to tweet on Twitter/X
+    tweet_url = Column(String(500), nullable=True)
     
     # Relationships
     notes = relationship("Note", back_populates="tweet", cascade="all, delete-orphan")

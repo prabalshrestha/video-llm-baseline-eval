@@ -34,7 +34,7 @@ class VideoNoteIdentifier:
         self.temp_dir = self.data_dir / "temp_metadata"
         self.temp_dir.mkdir(exist_ok=True)
         self.force = force  # Force re-check even if already in database
-
+        
     def check_ytdlp(self):
         """Check if yt-dlp is installed."""
         try:
@@ -54,7 +54,7 @@ class VideoNoteIdentifier:
         except Exception as e:
             logger.error(f"Error checking yt-dlp: {e}")
             return False
-
+    
     def download_metadata_only(self, tweet_id, index, save_to_db=False):
         """
         Download only metadata (info.json) for a tweet without downloading video.
@@ -68,7 +68,7 @@ class VideoNoteIdentifier:
         """
         url = f"https://twitter.com/i/status/{tweet_id}"
         output_template = str(self.temp_dir / f"check_{index:05d}_%(id)s.%(ext)s")
-
+        
         try:
             # yt-dlp command to download ONLY metadata
             cmd = [
@@ -83,16 +83,16 @@ class VideoNoteIdentifier:
                 output_template,
                 url,
             ]
-
+            
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-
+            
             if result.returncode == 0:
                 # Find the info.json file
                 info_files = list(self.temp_dir.glob(f"check_{index:05d}_*.info.json"))
-
+                
                 if info_files:
                     info_file = info_files[0]
-
+                    
                     # Read and check media type
                     try:
                         with open(info_file, "r", encoding="utf-8") as f:
@@ -148,12 +148,12 @@ class VideoNoteIdentifier:
                                     f"Error saving to database for {tweet_id}: {e}"
                                 )
                                 # No need for rollback - context manager handles it
-
+                            
                         # Clean up the temp file
                         info_file.unlink()
-
+                        
                         return {"media_type": media_type, "info": info}
-
+                        
                     except Exception as e:
                         logger.debug(f"Error reading info file for {tweet_id}: {e}")
                         return None
@@ -161,18 +161,18 @@ class VideoNoteIdentifier:
                     return None
             else:
                 return None
-
+                
         except subprocess.TimeoutExpired:
             logger.debug(f"Timeout for tweet {tweet_id}")
             return None
         except Exception as e:
             logger.debug(f"Error checking tweet {tweet_id}: {e}")
             return None
-
+    
     def identify_videos_batch(self, df, batch_size=500, max_workers=20):
         """
         Process media notes in batches to identify which are actually videos.
-
+        
         Args:
             df: DataFrame with media notes
             batch_size: Number of tweets to check in one batch (default: 500)
@@ -183,20 +183,20 @@ class VideoNoteIdentifier:
         """
         results = []
         total = len(df)
-
+        
         logger.info(f"\nChecking {total} media notes...")
         logger.info(f"Using {max_workers} parallel workers")
         logger.info("This may take a while, please be patient...\n")
-
+        
         # Process in batches to show progress
         for batch_start in range(0, total, batch_size):
             batch_end = min(batch_start + batch_size, total)
             batch_df = df.iloc[batch_start:batch_end]
-
+            
             logger.info(f"Processing batch {batch_start+1}-{batch_end} of {total}...")
-
+            
             batch_results = []
-
+            
             # Use ThreadPoolExecutor for parallel downloads
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 # Submit all tasks
@@ -210,7 +210,7 @@ class VideoNoteIdentifier:
                         save_to_db=True,  # Save to database (thread-safe)
                     )
                     future_to_row[future] = (idx, row)
-
+                
                 # Collect results as they complete
                 for future in as_completed(future_to_row):
                     idx, row = future_to_row[future]
@@ -235,31 +235,31 @@ class VideoNoteIdentifier:
                                 "is_video": False,
                             }
                         )
-
+            
             results.extend(batch_results)
-
+            
             # Show progress
             videos_found = sum(1 for r in results if r["is_video"])
             logger.info(
                 f"  Progress: {len(results)}/{total} checked, {videos_found} videos found so far"
             )
-
+            
             # Brief pause between batches
             if batch_end < total:
                 time.sleep(2)
-
+        
         return results
-
+    
     def run(self, sample_size=None):
         """Main execution."""
         logger.info("=" * 70)
         logger.info("VIDEO NOTE IDENTIFIER - Accurate Media Type Detection")
         logger.info("=" * 70)
-
+        
         # Check yt-dlp
         if not self.check_ytdlp():
             return None
-
+        
         # Use session to query and extract data (all within session context)
         with get_session() as session:
             # Load media notes from database
@@ -307,51 +307,51 @@ class VideoNoteIdentifier:
 
         # Convert to DataFrame for processing
         df = pd.DataFrame(media_notes_data)
-
-        if sample_size:
-            df = df.head(sample_size)
-            logger.info(f"Limited to first {sample_size} notes for testing")
-
+            
+            if sample_size:
+                df = df.head(sample_size)
+                logger.info(f"Limited to first {sample_size} notes for testing")
+                
         # Identify videos and save to database
         # Note: Session is NOT passed - each worker creates its own thread-safe session
         results = self.identify_videos_batch(df)
-
+        
         # Create results DataFrame
         results_df = pd.DataFrame(results)
-
+        
         # Filter for videos only
         video_mask = results_df["is_video"] == True
         video_indices = results_df[video_mask]["index"].tolist()
-
+        
         # Get the original rows for videos
         video_notes = (
             df.loc[video_indices].copy() if len(video_indices) > 0 else pd.DataFrame()
         )
-
+        
         logger.info("\n" + "=" * 70)
         logger.info("RESULTS")
         logger.info("=" * 70)
         logger.info(f"Total media notes checked: {len(df)}")
         logger.info(f"Actual videos found: {len(video_notes)}")
         if len(df) > 0:
-            logger.info(f"Percentage: {len(video_notes)/len(df)*100:.1f}%")
+        logger.info(f"Percentage: {len(video_notes)/len(df)*100:.1f}%")
         if len(video_notes) > 0:
-            logger.info(f"Unique video tweets: {video_notes['tweetId'].nunique()}")
+        logger.info(f"Unique video tweets: {video_notes['tweetId'].nunique()}")
             logger.info("\nAll video metadata saved to database (media_metadata table)")
-
+        
         # Optional: Save results to CSV for reference
         if len(video_notes) > 0:
             self.filtered_dir.mkdir(parents=True, exist_ok=True)
             output_file = self.filtered_dir / "verified_video_notes.csv"
             video_notes.to_csv(output_file, index=False)
             logger.info(f"Saved reference CSV to: {output_file}")
-
+            
             # Also save the detailed results
             results_file = self.filtered_dir / "media_type_check_results.json"
             with open(results_file, "w") as f:
                 json.dump(results, f, indent=2)
             logger.info(f"Saved detailed results to: {results_file}")
-
+            
             # Sample some summaries
             logger.info("\nSample video note summaries:")
             for i, summary in enumerate(video_notes["summary"].head(5), 1):
@@ -361,7 +361,7 @@ class VideoNoteIdentifier:
                 logger.info(f"{i}. {summary_short}")
         else:
             logger.warning("No videos found!")
-
+        
         # Clean up temp directory
         try:
             for f in self.temp_dir.glob("*"):
@@ -370,17 +370,17 @@ class VideoNoteIdentifier:
             logger.info("\nCleaned up temporary files")
         except:
             pass
-
+        
         logger.info("\n✓ Video identification complete!")
         logger.info("Check the media_metadata table in database for results")
-
+        
         return video_notes
 
 
 def main():
     """Main entry point."""
     import argparse
-
+    
     parser = argparse.ArgumentParser(
         description="Identify actual video notes by checking media type and save to database"
     )
@@ -396,10 +396,10 @@ def main():
         help="Force re-process all media notes, even if already in database",
     )
     args = parser.parse_args()
-
+    
     identifier = VideoNoteIdentifier(data_dir="data", force=args.force)
     result = identifier.run(sample_size=args.sample)
-
+    
     if result is not None and len(result) > 0:
         print(f"\n✓ Successfully identified {len(result)} video notes!")
         print(f"✓ Check media_metadata table in database")

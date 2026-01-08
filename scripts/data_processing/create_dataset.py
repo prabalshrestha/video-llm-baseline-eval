@@ -29,11 +29,19 @@ logger = logging.getLogger(__name__)
 class DatasetCreator:
     """Creates the complete evaluation dataset from database."""
 
-    def __init__(self, data_dir: str = "data", force_api_fetch: bool = False):
+    def __init__(
+        self,
+        data_dir: str = "data",
+        force_api_fetch: bool = False,
+        sample_size: int = None,
+        random_seed: int = 42,
+    ):
         self.data_dir = Path(data_dir)
         self.output_dir = self.data_dir / "evaluation"
         self.output_dir.mkdir(exist_ok=True)
         self.force_api_fetch = force_api_fetch
+        self.sample_size = sample_size  # Number of samples to randomly select
+        self.random_seed = random_seed  # For reproducible sampling
 
         self.twitter = TwitterService(force=force_api_fetch)
 
@@ -73,6 +81,17 @@ class DatasetCreator:
             )
 
         logger.info(f"Loaded {len(data)} complete records (with existing video files)")
+
+        # Apply random sampling if requested
+        if self.sample_size and self.sample_size < len(data):
+            import random
+
+            random.seed(self.random_seed)
+            data = random.sample(data, self.sample_size)
+            logger.info(
+                f"✓ Randomly sampled {self.sample_size} videos (seed={self.random_seed})"
+            )
+
         return data
 
     def fetch_missing_tweet_data(self, session, data: List[Dict]) -> int:
@@ -147,7 +166,8 @@ class DatasetCreator:
                 },
                 "tweet": {
                     "tweet_id": str(tweet.tweet_id),
-                    "url": f"https://twitter.com/i/status/{tweet.tweet_id}",
+                    "url": tweet.tweet_url
+                    or f"https://twitter.com/i/status/{tweet.tweet_id}",
                     "text": tweet.text or "",
                     "author_name": tweet.author_name or "",
                     "author_username": tweet.author_username or "",
@@ -164,6 +184,8 @@ class DatasetCreator:
                 },
                 "community_note": {
                     "note_id": str(note.note_id),
+                    "note_url": note.note_url
+                    or f"https://twitter.com/i/birdwatch/n/{note.note_id}",
                     "classification": note.classification or "",
                     "summary": note.summary or "",
                     "is_misleading": note.classification
@@ -360,9 +382,25 @@ def main():
         action="store_true",
         help="Force re-fetch all tweet data from API, even if already in database",
     )
+    parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=None,
+        help="Randomly sample N videos for diversity (e.g., --sample-size 100)",
+    )
+    parser.add_argument(
+        "--random-seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducible sampling (default: 42)",
+    )
     args = parser.parse_args()
 
-    creator = DatasetCreator(force_api_fetch=args.force_api_fetch)
+    creator = DatasetCreator(
+        force_api_fetch=args.force_api_fetch,
+        sample_size=args.sample_size,
+        random_seed=args.random_seed,
+    )
     success = creator.run(use_api=not args.no_api)
 
     if success:

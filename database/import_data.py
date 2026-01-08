@@ -128,6 +128,7 @@ def import_notes_from_tsv(
                     trustworthy_sources=to_int(row.get("trustworthySources")),
                     summary=clean_value(row.get("summary")),
                     is_media_note=to_bool(row.get("isMediaNote")),
+                    note_url=f"https://twitter.com/i/birdwatch/n/{int(row['noteId'])}",
                 )
 
                 batch.append(note)
@@ -213,6 +214,7 @@ def import_tweets_from_api_data(
                 "retweets": data.get("retweets"),
                 "replies": data.get("replies"),
                 "quotes": data.get("quotes"),
+                "tweet_url": f"https://twitter.com/i/status/{tweet_id}",
                 "raw_api_data": data,  # Store complete API response
                 "api_fetched_at": datetime.utcnow(),
             }
