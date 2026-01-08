@@ -11,10 +11,10 @@
 set -e
 
 # Activate virtual environment if it exists
-if [ -d "venv" ]; then
-    echo "Activating virtual environment..."
-    source venv/bin/activate
-fi
+# if [ -d "venv" ]; then
+#     echo "Activating virtual environment..."
+#     source venv/bin/activate
+# fi
 
 # Set exports directory
 EXPORTS_DIR="${1:-data/exports}"
