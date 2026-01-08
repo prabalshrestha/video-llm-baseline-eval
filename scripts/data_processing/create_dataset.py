@@ -105,16 +105,24 @@ class DatasetCreator:
         Returns:
             Number of tweets fetched
         """
-        # Find tweet IDs without raw_api_data
-        tweets_without_api = [
-            str(d["tweet"].tweet_id) for d in data if d["tweet"].raw_api_data is None
-        ]
+        # Find tweet IDs without raw_api_data (deduplicate since same tweet can appear multiple times)
+        tweets_without_api = list(
+            set(
+                [
+                    str(d["tweet"].tweet_id)
+                    for d in data
+                    if d["tweet"].raw_api_data is None
+                ]
+            )
+        )
 
         if not tweets_without_api:
             logger.info("All tweets already have API data")
             return 0
 
-        logger.info(f"Found {len(tweets_without_api)} tweets without API data")
+        logger.info(
+            f"Found {len(tweets_without_api)} unique tweets without API data (from {sum(1 for d in data if d['tweet'].raw_api_data is None)} records)"
+        )
 
         if not self.twitter.is_available():
             logger.warning("Twitter API not available - skipping API fetch")
