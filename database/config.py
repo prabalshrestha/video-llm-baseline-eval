@@ -6,9 +6,21 @@ import os
 import logging
 from typing import Generator
 from contextlib import contextmanager
+from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from sqlalchemy.pool import QueuePool
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+
+    env_path = Path(__file__).parent.parent / ".env"
+    load_dotenv(dotenv_path=env_path)
+except ImportError:
+    logging.warning(
+        "python-dotenv not installed. Install with: pip install python-dotenv"
+    )
 
 logger = logging.getLogger(__name__)
 
