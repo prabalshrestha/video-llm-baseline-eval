@@ -310,6 +310,24 @@ export VIDEO_DOWNLOAD_PATH=/absolute/path/to/videos
 python scripts/data_processing/download_videos.py --limit 1
 ```
 
+**Video Paths After Server Sync:**
+
+If you sync your database to a different server, video paths may be incorrect. Fix them:
+
+```bash
+# Preview changes (dry run)
+python3 fix_video_paths.py --dry-run
+
+# Apply fixes (updates database paths)
+python3 fix_video_paths.py
+```
+
+This updates paths in the database to match your current `VIDEO_DOWNLOAD_PATH` or default location. The script:
+- ✅ Extracts filenames from old paths
+- ✅ Reconstructs paths using current environment
+- ✅ Only updates if files actually exist
+- ✅ Respects `VIDEO_DOWNLOAD_PATH` env var
+
 See [`database/README.md`](database/README.md) for more examples and helper functions.
 
 ## Dataset Structure
