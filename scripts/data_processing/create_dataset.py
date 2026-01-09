@@ -35,6 +35,7 @@ class DatasetCreator:
         force_api_fetch: bool = False,
         sample_size: int = None,
         random_seed: int = 42,
+        api_data_only: bool = False,
     ):
         self.data_dir = Path(data_dir)
         self.output_dir = self.data_dir / "evaluation"
@@ -42,6 +43,7 @@ class DatasetCreator:
         self.force_api_fetch = force_api_fetch
         self.sample_size = sample_size  # Number of samples to randomly select
         self.random_seed = random_seed  # For reproducible sampling
+        self.api_data_only = api_data_only  # Only include tweets with existing API data
 
         self.twitter = TwitterService(force=force_api_fetch)
 
@@ -60,9 +62,15 @@ class DatasetCreator:
             .filter(MediaMetadata.local_path.isnot(None))
             .filter(MediaMetadata.media_type == "video")
         )
+        
+        # Filter for tweets with API data if requested
+        if self.api_data_only:
+            query = query.filter(Tweet.raw_api_data.isnot(None))
 
         results = query.all()
         logger.info(f"Found {len(results)} downloaded videos with notes in database")
+        if self.api_data_only:
+            logger.info("  ✓ Filtered to only tweets with API data")
 
         # Convert to list of dicts for easier processing
         data = []
@@ -340,6 +348,8 @@ class DatasetCreator:
                 logger.info("✅ SUCCESS!")
                 logger.info("=" * 70)
                 logger.info(f"Total samples: {len(dataset)}")
+                unique_tweets = len(set(d['tweet']['tweet_id'] for d in dataset))
+                logger.info(f"Unique tweets: {unique_tweets}")
                 logger.info(
                     f"With API data: {sum(1 for d in dataset if d['metadata']['has_api_data'])}"
                 )
@@ -402,12 +412,18 @@ def main():
         default=42,
         help="Random seed for reproducible sampling (default: 42)",
     )
+    parser.add_argument(
+        "--api-data-only",
+        action="store_true",
+        help="Only include tweets that already have API data (no fetching needed)",
+    )
     args = parser.parse_args()
 
     creator = DatasetCreator(
         force_api_fetch=args.force_api_fetch,
         sample_size=args.sample_size,
         random_seed=args.random_seed,
+        api_data_only=args.api_data_only,
     )
     success = creator.run(use_api=not args.no_api)
 
