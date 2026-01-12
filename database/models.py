@@ -74,6 +74,11 @@ class Note(Base):
     # URL for direct access to note on Twitter
     note_url = Column(String(500), nullable=True)
     
+    # Note status fields (from noteStatusHistory)
+    current_status = Column(String(100), nullable=True, index=True)
+    first_non_nmr_status = Column(String(100), nullable=True)
+    most_recent_non_nmr_status = Column(String(100), nullable=True)
+    
     # Relationships
     tweet = relationship("Tweet", back_populates="notes")
     

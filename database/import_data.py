@@ -402,3 +402,113 @@ def ensure_tweets_exist(
             created += len(missing_ids)
 
     return created
+
+
+def import_note_status_history(
+    session: Session,
+    tsv_path: Path,
+    batch_size: int = 1000,
+) -> Dict[str, int]:
+    """
+    Import note status history from raw TSV file and update notes table.
+
+    Args:
+        session: Database session
+        tsv_path: Path to noteStatusHistory-00000.tsv file
+        batch_size: Number of records to process at once
+
+    Returns:
+        Dictionary with import statistics
+    """
+    logger.info(f"Importing note status history from {tsv_path}")
+
+    stats = {
+        "total": 0,
+        "updated": 0,
+        "not_found": 0,
+        "errors": 0,
+    }
+
+    # Read and process the TSV file
+    with open(tsv_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        
+        batch = []
+        for row in tqdm(reader, desc="Processing note status history"):
+            stats["total"] += 1
+            
+            try:
+                note_id = int(row["noteId"])
+                current_status = row.get("currentStatus", "").strip() or None
+                first_non_nmr = row.get("firstNonNMRStatus", "").strip() or None
+                most_recent_non_nmr = row.get("mostRecentNonNMRStatus", "").strip() or None
+                
+                batch.append({
+                    "note_id": note_id,
+                    "current_status": current_status,
+                    "first_non_nmr_status": first_non_nmr,
+                    "most_recent_non_nmr_status": most_recent_non_nmr,
+                })
+                
+                # Process batch when full
+                if len(batch) >= batch_size:
+                    updated, not_found = _update_note_status_batch(session, batch)
+                    stats["updated"] += updated
+                    stats["not_found"] += not_found
+                    batch = []
+                    
+            except Exception as e:
+                logger.error(f"Error processing note status for note {row.get('noteId')}: {e}")
+                stats["errors"] += 1
+                continue
+        
+        # Process remaining items
+        if batch:
+            updated, not_found = _update_note_status_batch(session, batch)
+            stats["updated"] += updated
+            stats["not_found"] += not_found
+
+    logger.info(f"Note status import complete: {stats}")
+    return stats
+
+
+def _update_note_status_batch(session: Session, batch: List[Dict]) -> tuple[int, int]:
+    """
+    Update a batch of notes with status information.
+    
+    Args:
+        session: Database session
+        batch: List of dicts with note_id and status fields
+        
+    Returns:
+        Tuple of (updated_count, not_found_count)
+    """
+    updated = 0
+    not_found = 0
+    
+    # Get all note IDs in batch
+    note_ids = [item["note_id"] for item in batch]
+    
+    # Fetch existing notes
+    existing_notes = {
+        note.note_id: note
+        for note in session.query(Note).filter(Note.note_id.in_(note_ids)).all()
+    }
+    
+    # Update notes
+    for item in batch:
+        note_id = item["note_id"]
+        note = existing_notes.get(note_id)
+        
+        if note:
+            note.current_status = item["current_status"]
+            note.first_non_nmr_status = item["first_non_nmr_status"]
+            note.most_recent_non_nmr_status = item["most_recent_non_nmr_status"]
+            updated += 1
+        else:
+            not_found += 1
+    
+    # Commit the batch
+    session.commit()
+    
+    return updated, not_found
