@@ -115,7 +115,7 @@ class TwitterService:
 
                     params = {
                         "ids": ",".join(str(tid) for tid in batch),
-                        "tweet.fields": "created_at,author_id,public_metrics,text,entities,attachments",
+                        "tweet.fields": "created_at,author_id,public_metrics,text,entities,attachments,lang,referenced_tweets",
                         "user.fields": "name,username,verified",
                         "expansions": "author_id,attachments.media_keys",
                         "media.fields": "type,url,duration_ms,preview_image_url",
@@ -152,6 +152,10 @@ class TwitterService:
                                 "retweets": metrics.get("retweet_count", 0),
                                 "replies": metrics.get("reply_count", 0),
                                 "quotes": metrics.get("quote_count", 0),
+                                "lang": tweet.get("lang"),  # Language code
+                                "referenced_tweets": tweet.get(
+                                    "referenced_tweets"
+                                ),  # For identifying retweets/replies
                                 "raw_response": data,  # Store full API response
                             }
 
