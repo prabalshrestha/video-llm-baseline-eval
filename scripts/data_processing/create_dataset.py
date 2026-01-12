@@ -422,38 +422,51 @@ class DatasetCreator:
             json.dump(output, f, indent=2, ensure_ascii=False)
         logger.info(f"✓ Saved: {json_file}")
 
-        # Save CSV (flattened) - one row per note
+        # Save CSV - one row per tweet with comma-separated note info
         try:
             import pandas as pd
 
             flattened = []
             for entry in dataset:
-                # Create one row per note (multiple rows per tweet)
-                for note_idx, note in enumerate(entry["community_notes"]):
-                    flat = {
-                        "tweet_id": entry["tweet"]["tweet_id"],
-                        "note_id": note["note_id"],
-                        "note_index": note_idx + 1,  # 1-based index
-                        "total_notes_for_tweet": len(entry["community_notes"]),
-                        "video_filename": entry["video"]["filename"],
-                        "video_duration": entry["video"]["duration_seconds"],
-                        "tweet_url": entry["tweet"]["url"],
-                        "tweet_text": entry["tweet"]["text"],
-                        "tweet_author": entry["tweet"]["author_username"],
-                        "tweet_likes": entry["tweet"]["engagement"]["likes"],
-                        "tweet_created_at": entry["tweet"]["created_at"],
-                        "note_classification": note["classification"],
-                        "note_current_status": note["current_status"],
-                        "note_summary": note["summary"],
-                        "is_misleading": note["is_misleading"],
-                        "sample_id": entry["metadata"]["sample_id"],
-                    }
-                    flattened.append(flat)
+                # Create one row per tweet with comma-separated note fields
+                note_ids = ",".join(
+                    note["note_id"] for note in entry["community_notes"]
+                )
+                note_statuses = ",".join(
+                    note.get("current_status", "") or "UNKNOWN"
+                    for note in entry["community_notes"]
+                )
+                note_classifications = ",".join(
+                    note["classification"] or "" for note in entry["community_notes"]
+                )
+                is_misleading_flags = ",".join(
+                    str(note["is_misleading"]) for note in entry["community_notes"]
+                )
+
+                flat = {
+                    "sample_id": entry["metadata"]["sample_id"],
+                    "tweet_id": entry["tweet"]["tweet_id"],
+                    "tweet_url": entry["tweet"]["url"],
+                    "tweet_text": entry["tweet"]["text"],
+                    "tweet_author": entry["tweet"]["author_username"],
+                    "tweet_likes": entry["tweet"]["engagement"]["likes"],
+                    "tweet_created_at": entry["tweet"]["created_at"],
+                    "video_filename": entry["video"]["filename"],
+                    "video_duration": entry["video"]["duration_seconds"],
+                    "num_notes": len(entry["community_notes"]),
+                    "note_ids": note_ids,
+                    "note_current_status": note_statuses,
+                    "note_classifications": note_classifications,
+                    "is_misleading": is_misleading_flags,
+                }
+                flattened.append(flat)
 
             csv_file = self.output_dir / "dataset.csv"
             df = pd.DataFrame(flattened)
             df.to_csv(csv_file, index=False, encoding="utf-8")
-            logger.info(f"✓ Saved: {csv_file} ({len(flattened)} rows = notes)")
+            logger.info(
+                f"✓ Saved: {csv_file} ({len(flattened)} rows = tweets, {total_notes} notes)"
+            )
         except Exception as e:
             logger.warning(f"Could not save CSV: {e}")
 
