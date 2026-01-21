@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Model configurations
 MODEL_CONFIGS = {
     "gemini": {
-        "variants": ["gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-exp-1206"],
+        "variants": ["gemini-1.5-pro", "gemini-2.5-flash", "gemini-2.5-pro"],
         "default": "gemini-1.5-pro",
         "service_class": GeminiService,
     },

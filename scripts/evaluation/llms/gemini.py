@@ -29,9 +29,9 @@ class GeminiService(VideoLLMService):
     """Google Gemini service for video analysis with structured output.
 
     Supports multiple Gemini models:
-    - gemini-1.5-pro (default)
-    - gemini-2.0-flash-exp (Gemini 2.5 Flash equivalent)
-    - gemini-exp-1206 (Gemini 2.5 Pro equivalent)
+    - gemini-1.5-pro (default) - Original workhorse model
+    - gemini-2.5-flash - Best price-performance (stable)
+    - gemini-2.5-pro - Advanced thinking model
     """
 
     def __init__(
