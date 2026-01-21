@@ -1,0 +1,15 @@
+# Twitter Scraping Tools (No API Key Required)
+# Install with: pip install -r requirements-scraper.txt
+
+# Method 1: Tweepy-Self (Recommended - Fast & Reliable)
+tweepy-self>=1.0.0
+
+# Method 2: SNScrape (CLI-based scraping)
+snscrape>=0.7.0
+
+# Method 3: Playwright (Browser automation - Most reliable but slower)
+playwright>=1.40.0
+# After installing: playwright install chromium
+
+# Optional: Better async support
+aiohttp>=3.9.0
