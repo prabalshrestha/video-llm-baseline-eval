@@ -64,11 +64,13 @@ def verify_and_fix_mappings(videos_dir="data/videos", fix=False):
     logger.info("\nStep 2: Checking database mappings...")
     
     with get_session() as session:
-        # Get all video records from database
+        # Get all video records from database - but limit to those with local_path
+        # to avoid checking 40k records
         sql = text("""
             SELECT tweet_id, local_path
             FROM media_metadata
             WHERE media_type = 'video'
+            AND local_path IS NOT NULL
         """)
         
         result = session.execute(sql)
@@ -110,14 +112,31 @@ def verify_and_fix_mappings(videos_dir="data/videos", fix=False):
                     'new_path': expected_path
                 })
         
+        # Check reverse: do renamed files have DB records?
+        logger.info("\nChecking if renamed files have database records...")
+        files_without_db = []
+        for tweet_id, files in video_files.items():
+            # Check if this tweet_id exists in database
+            found_in_db = False
+            for row in db_records:
+                if str(row[0]) == tweet_id:
+                    found_in_db = True
+                    break
+            
+            if not found_in_db:
+                files_without_db.append(tweet_id)
+                logger.warning(f"⚠️  File {files[0]['filename']} has no database record!")
+        
         # Summary
         logger.info("\n" + "="*60)
         logger.info("VERIFICATION RESULTS")
         logger.info("="*60)
         logger.info(f"✓ Correct mappings: {correct}")
         logger.info(f"✗ Incorrect mappings: {incorrect}")
-        logger.info(f"⚠ Missing files: {missing}")
-        logger.info(f"Total records: {len(db_records)}")
+        logger.info(f"⚠ DB records without files: {missing}")
+        logger.info(f"⚠ Renamed files without DB: {len(files_without_db)}")
+        logger.info(f"Total DB records: {len(db_records)}")
+        logger.info(f"Total renamed files: {sum(len(v) for v in video_files.values())}")
         logger.info("="*60)
         
         # Fix if requested
