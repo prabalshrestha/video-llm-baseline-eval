@@ -120,6 +120,7 @@ class DatasetCreator:
         Load unique tweets from database with their videos and notes.
 
         NEW: Returns one entry per tweet (not per note) with all notes grouped.
+        For tweets with multiple videos, only the first video (video_index=1) is used.
 
         Returns:
             List of dictionaries with tweet, media, and associated notes
@@ -128,11 +129,13 @@ class DatasetCreator:
         # 1. Downloaded videos (local_path is set)
         # 2. Twitter API data (required for filtering)
         # 3. At least one note
+        # 4. Use only first video (video_index=1) for tweets with multiple videos
         query = (
             session.query(Tweet, MediaMetadata)
             .join(MediaMetadata, Tweet.tweet_id == MediaMetadata.tweet_id)
             .filter(MediaMetadata.local_path.isnot(None))
             .filter(MediaMetadata.media_type == "video")
+            .filter(MediaMetadata.video_index == 1)  # Only first video per tweet
             .filter(Tweet.raw_api_data.isnot(None))  # Always require API data now
         )
 

@@ -5,10 +5,14 @@ Evaluating Video Large Language Models for detecting and providing context to po
 ## Quick Start
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 pip install -r requirements.txt
 
-# Run everything (ONE command!)
+# 2. Set up environment variables (required for evaluation)
+cp env.template .env
+# Edit .env and add your API keys
+
+# 3. Run everything (ONE command!)
 python main.py pipeline
 
 # Or step by step
@@ -356,6 +360,25 @@ This updates paths in the database to match your current `VIDEO_DOWNLOAD_PATH` o
 - ✅ Only updates if files actually exist
 - ✅ Respects `VIDEO_DOWNLOAD_PATH` env var
 
+**Video-Tweet Mismatches (File Renaming):**
+
+If you have video files from multiple download sessions with mismatched naming (e.g., `video_001_TWEETID.mp4`), you can migrate to the new naming convention:
+
+```bash
+# Preview changes (safe, no modifications)
+python fix_video_mapping.py --dry-run
+
+# Apply file renaming and database updates
+python fix_video_mapping.py
+
+# Update database schema to support multiple videos per tweet
+alembic upgrade head
+```
+
+**New naming format:** `{tweet_id}_{index}.mp4` (e.g., `1234567890_1.mp4`)
+
+This fixes mismatches and prepares your database to support tweets with multiple videos. See **[MIGRATION_ACTION_PLAN.md](MIGRATION_ACTION_PLAN.md)** for complete step-by-step instructions.
+
 See [`database/README.md`](database/README.md) for more examples and helper functions.
 
 ## Dataset Structure
@@ -488,26 +511,20 @@ pip install -r requirements.txt
 ```
 
 2. **Configure environment variables:**
-   Create a `.env` file in the project root:
+   
+Copy the template and edit with your API keys:
 
 ```bash
-# Database (required for database-powered pipeline)
-DATABASE_URL=postgresql://localhost/video_llm_eval
-
-# Video Download Path (optional - useful for storing videos on external drive/server)
-# If not set, defaults to data/videos/
-# VIDEO_DOWNLOAD_PATH=/mnt/external_drive/videos
-
-# Twitter API (optional - for fetching tweet data)
-# TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
-
-# LLM API Keys (required for evaluation)
-# Get Gemini API key at: https://ai.google.dev/
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Get OpenAI API key at: https://platform.openai.com/
-OPENAI_API_KEY=your_openai_api_key_here
+cp env.template .env
+nano .env  # or use your preferred editor
 ```
+
+Required API keys (get at least one):
+- **Gemini API Key**: https://makersuite.google.com/app/apikey
+- **OpenAI API Key**: https://platform.openai.com/api-keys
+- **Qwen API Key** (optional): https://dashscope.aliyun.com/
+
+See [`env.template`](env.template) for complete list of environment variables and setup instructions.
 
 3. **Test setup:**
 

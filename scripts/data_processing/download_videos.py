@@ -138,14 +138,17 @@ class VideoDownloader:
 
         Args:
             media_metadata: MediaMetadata object from database
-            index: Download index for naming
+            index: Download index for logging only (not used in filename)
             session: Database session for updating local_path
         """
         tweet_id = media_metadata.tweet_id
+        video_index = media_metadata.video_index
         url = f"https://twitter.com/i/status/{tweet_id}"
-        output_template = str(self.videos_dir / f"video_{index:03d}_%(id)s.%(ext)s")
+        
+        # New naming convention: TWEETID_INDEX.ext (e.g., 1234567890_1.mp4)
+        output_template = str(self.videos_dir / f"{tweet_id}_{video_index}.%(ext)s")
 
-        logger.info(f"[{index}] Downloading tweet {tweet_id}...")
+        logger.info(f"[{index}] Downloading tweet {tweet_id} (video {video_index})...")
 
         try:
             # yt-dlp command
@@ -165,10 +168,10 @@ class VideoDownloader:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
             if result.returncode == 0:
-                # Find downloaded file
+                # Find downloaded file with new naming pattern
                 video_files = list(
-                    self.videos_dir.glob(f"video_{index:03d}_*.mp4")
-                ) + list(self.videos_dir.glob(f"video_{index:03d}_*.webm"))
+                    self.videos_dir.glob(f"{tweet_id}_{video_index}.mp4")
+                ) + list(self.videos_dir.glob(f"{tweet_id}_{video_index}.webm"))
 
                 if video_files:
                     video_file = video_files[0]
@@ -187,6 +190,7 @@ class VideoDownloader:
                     metadata = {
                         "index": index,
                         "tweet_id": tweet_id,
+                        "video_index": video_index,
                         "url": url,
                         "filename": video_file.name,
                         "local_path": str(video_file.absolute()),
@@ -212,6 +216,7 @@ class VideoDownloader:
                         {
                             "index": index,
                             "tweet_id": tweet_id,
+                            "video_index": video_index,
                             "url": url,
                             "downloaded": False,
                             "error": "Video file not found",
