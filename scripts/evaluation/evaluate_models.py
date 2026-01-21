@@ -254,6 +254,7 @@ class VideoLLMEvaluator:
                     model_result = {
                         "sample_id": result["sample_id"],
                         "tweet_id": result.get("tweet_id"),
+                        "tweet_url": result.get("tweet_url"),
                         "video_path": result.get("video_path"),
                         "tweet_text": result.get("tweet_text"),
                         "human_note": result.get("human_note"),
@@ -407,6 +408,7 @@ class VideoLLMEvaluator:
         result = {
             "sample_id": sample_id,
             "tweet_id": sample["tweet"]["tweet_id"],
+            "tweet_url": sample["tweet"]["url"],
             "video_path": video_path,
             "tweet_text": tweet_text,
             "human_note": {
