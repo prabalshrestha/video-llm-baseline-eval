@@ -85,19 +85,21 @@ class VideoLLMEvaluator:
         # Initialize services with specified model variants
         self.services = {}
         self.model_configs = model_configs or {}
-        
+
         # Initialize Gemini
         gemini_variant = self.model_configs.get("gemini", "gemini-1.5-pro")
         self.services["gemini"] = GeminiService(model_name=gemini_variant)
-        
+
         # Initialize GPT-4o
         self.services["gpt4o"] = GPT4oService()
-        
+
         # Initialize Qwen (support both API and local modes)
         qwen_variant = self.model_configs.get("qwen", "qwen2.5-vl-7b-instruct")
         use_local = self.model_configs.get("qwen_local", False)
-        self.services["qwen"] = QwenService(model_name=qwen_variant, use_local=use_local)
-        
+        self.services["qwen"] = QwenService(
+            model_name=qwen_variant, use_local=use_local
+        )
+
         self.metrics = EvaluationMetrics()
 
         # Load dataset
@@ -168,7 +170,7 @@ class VideoLLMEvaluator:
         # Create directory structure
         run_dir = self.output_dir / "runs" / run_dir_name
         run_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Create subdirectories
         (run_dir / "models").mkdir(exist_ok=True)
         (run_dir / "metrics").mkdir(exist_ok=True)
@@ -203,18 +205,18 @@ class VideoLLMEvaluator:
                     "variant": getattr(service, "model_name", model_name),
                     "api_key_set": service.is_available(),
                 }
-                
+
                 # Add Qwen-specific info
                 if model_name == "qwen" and hasattr(service, "use_local"):
                     model_info["mode"] = "local" if service.use_local else "api"
-                
+
                 config["models"][model_name] = model_info
 
         # Save config
         config_path = self.run_dir / "config.json"
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
-        
+
         logger.info(f"Saved configuration to: {config_path}")
 
     def _save_per_model_results(self, results: List[Dict], aggregate_stats: Dict):
@@ -247,7 +249,7 @@ class VideoLLMEvaluator:
             for result in results:
                 output_key = f"{model_name}_output"
                 metrics_key = f"{model_name}_metrics"
-                
+
                 if output_key in result:
                     model_result = {
                         "sample_id": result["sample_id"],
@@ -256,10 +258,10 @@ class VideoLLMEvaluator:
                         "human_note": result.get("human_note"),
                         "output": result[output_key],
                     }
-                    
+
                     if metrics_key in result:
                         model_result["metrics"] = result[metrics_key]
-                    
+
                     model_results.append(model_result)
 
             # Prepare per-model JSON
@@ -278,7 +280,7 @@ class VideoLLMEvaluator:
             model_path = self.run_dir / "models" / filename
             with open(model_path, "w", encoding="utf-8") as f:
                 json.dump(per_model_data, f, indent=2, ensure_ascii=False)
-            
+
             logger.info(f"Saved {model_name} results to: {model_path}")
 
     def _save_comparison_table(self, aggregate_stats: Dict):
@@ -295,44 +297,48 @@ class VideoLLMEvaluator:
 
         # Prepare CSV data
         csv_path = self.run_dir / "metrics" / "comparison_table.csv"
-        
+
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            
+
             # Write header
-            writer.writerow([
-                "Model",
-                "Accuracy",
-                "ROUGE-1",
-                "ROUGE-2",
-                "ROUGE-L",
-                "BLEU",
-                "Semantic Sim",
-                "Reason F1",
-                "Samples"
-            ])
-            
+            writer.writerow(
+                [
+                    "Model",
+                    "Accuracy",
+                    "ROUGE-1",
+                    "ROUGE-2",
+                    "ROUGE-L",
+                    "BLEU",
+                    "Semantic Sim",
+                    "Reason F1",
+                    "Samples",
+                ]
+            )
+
             # Write data for each model
             for model_name, stats in aggregate_stats.items():
                 if not stats:
                     continue
-                
+
                 # Get model variant name
                 service = self.services.get(model_name)
                 model_variant = getattr(service, "model_name", model_name)
-                
-                writer.writerow([
-                    model_variant,
-                    f"{stats.get('classification_accuracy', 0):.3f}",
-                    f"{stats.get('rouge1', 0):.3f}",
-                    f"{stats.get('rouge2', 0):.3f}",
-                    f"{stats.get('rougeL', 0):.3f}",
-                    f"{stats.get('bleu', 0):.3f}",
-                    f"{stats.get('semantic_similarity', 0):.3f}",
-                    f"{stats.get('reason_f1', 0):.3f}",
-                    stats.get('total_evaluated', 0),
-                ])
-        
+
+                writer.writerow(
+                    [
+                        model_variant,
+                        f"{stats.get('classification_accuracy', 0):.3f}",
+                        f"{stats.get('rouge1', 0):.3f}",
+                        f"{stats.get('rouge2', 0):.3f}",
+                        f"{stats.get('rougeL', 0):.3f}",
+                        f"{stats.get('bleu', 0):.3f}",
+                        f"{stats.get('semantic_similarity', 0):.3f}",
+                        f"{stats.get('reason_f1', 0):.3f}",
+                        stats.get("total_evaluated", 0),
+                    ]
+                )
+
         logger.info(f"Saved comparison table to: {csv_path}")
 
     def _update_latest_symlink(self):
@@ -341,17 +347,30 @@ class VideoLLMEvaluator:
             return
 
         latest_link = self.output_dir / "runs" / "latest"
-        
+
         # Remove existing symlink if it exists
-        if latest_link.exists() or latest_link.is_symlink():
-            latest_link.unlink()
-        
+        try:
+            if latest_link.is_symlink():
+                latest_link.unlink()
+            elif latest_link.exists():
+                # It's a directory or file, not a symlink - remove it
+                import shutil
+
+                if latest_link.is_dir():
+                    shutil.rmtree(latest_link)
+                else:
+                    latest_link.unlink()
+        except Exception as e:
+            logger.warning(f"Could not remove existing 'latest' link: {e}")
+
         # Create new symlink (use relative path for portability)
         try:
             latest_link.symlink_to(self.run_dir.name)
             logger.info(f"Updated 'latest' symlink to: {self.run_dir.name}")
         except Exception as e:
-            logger.warning(f"Could not create symlink (may not be supported on this OS): {e}")
+            logger.warning(
+                f"Could not create symlink (may not be supported on this OS): {e}"
+            )
 
     def evaluate_sample(
         self,
@@ -375,7 +394,14 @@ class VideoLLMEvaluator:
         tweet_text = sample["tweet"]["text"]
         author_name = sample["tweet"]["author_name"]
         author_username = sample["tweet"].get("author_username")
-        human_note = sample["community_note"]
+
+        # Get first community note (dataset has array of notes)
+        community_notes = sample.get("community_notes", [])
+        if not community_notes:
+            logger.warning(f"No community notes found for {sample_id}, skipping")
+            return None
+
+        human_note = community_notes[0]  # Use first note for evaluation
 
         result = {
             "sample_id": sample_id,
@@ -399,9 +425,9 @@ class VideoLLMEvaluator:
             if model_name not in self.services:
                 logger.warning(f"Unknown model: {model_name}")
                 continue
-            
+
             service = self.services[model_name]
-            
+
             if service.is_available():
                 logger.info(f"Evaluating {sample_id} with {model_name}...")
                 try:
@@ -457,16 +483,20 @@ class VideoLLMEvaluator:
         for sample in tqdm(samples, desc="Evaluating videos"):
             try:
                 result = self.evaluate_sample(sample, models, use_cache)
-                results.append(result)
+                if result is not None:  # Skip samples with no community notes
+                    results.append(result)
             except Exception as e:
                 logger.error(f"Error evaluating {sample['metadata']['sample_id']}: {e}")
+                import traceback
+
+                logger.debug(traceback.format_exc())
                 # Continue with next sample
 
         return results
 
     def save_results(
-        self, 
-        results: List[Dict], 
+        self,
+        results: List[Dict],
         output_path: Optional[str] = None,
         save_per_model: bool = True,
     ):
@@ -582,7 +612,7 @@ class VideoLLMEvaluator:
                 if key.endswith("_metrics"):
                     model_name = key.replace("_metrics", "")
                     all_models.add(model_name)
-        
+
         stats = {model: {} for model in all_models}
 
         for model in all_models:
@@ -646,10 +676,12 @@ class VideoLLMEvaluator:
             if key.endswith("_output"):
                 model_name = key.replace("_output", "")
                 output = result[key]
-                
+
                 if output.get("success"):
-                    f.write(f"{model_name.capitalize()}: Misleading={output['is_misleading']}")
-                    
+                    f.write(
+                        f"{model_name.capitalize()}: Misleading={output['is_misleading']}"
+                    )
+
                     metrics_key = f"{model_name}_metrics"
                     if metrics_key in result:
                         m = result[metrics_key]
@@ -747,20 +779,28 @@ def main():
             service = evaluator.services[model]
             if service.is_available():
                 available_models.append(model)
-                variant = getattr(service, 'model_name', model)
+                variant = getattr(service, "model_name", model)
                 logger.info(f"✓ {model.upper()} available: {variant}")
             else:
-                logger.warning(f"✗ {model.upper()} not available (check API key or setup)")
+                logger.warning(
+                    f"✗ {model.upper()} not available (check API key or setup)"
+                )
         else:
             logger.warning(f"✗ Unknown model: {model}")
 
     if not available_models:
-        logger.error("No models available! Set API keys in .env file or configure local models.")
+        logger.error(
+            "No models available! Set API keys in .env file or configure local models."
+        )
         logger.info("\nTo enable models:")
         logger.info("  Gemini: Set GEMINI_API_KEY environment variable")
         logger.info("  GPT-4o: Set OPENAI_API_KEY environment variable")
-        logger.info("  Qwen API: Set QWEN_API_KEY or DASHSCOPE_API_KEY environment variable")
-        logger.info("  Qwen Local: Install torch, transformers, qwen-vl-utils and use --qwen-local")
+        logger.info(
+            "  Qwen API: Set QWEN_API_KEY or DASHSCOPE_API_KEY environment variable"
+        )
+        logger.info(
+            "  Qwen Local: Install torch, transformers, qwen-vl-utils and use --qwen-local"
+        )
         return
 
     # Run evaluation
@@ -795,7 +835,9 @@ def main():
         print(f"✓ Run directory: {evaluator.run_dir}")
         if save_per_model:
             print(f"✓ Per-model files: {evaluator.run_dir / 'models'}")
-        print(f"✓ Comparison table: {evaluator.run_dir / 'metrics' / 'comparison_table.csv'}")
+        print(
+            f"✓ Comparison table: {evaluator.run_dir / 'metrics' / 'comparison_table.csv'}"
+        )
     print(f"\nEvaluated {len(results)} samples with {len(available_models)} model(s)")
     print("\n" + "=" * 80)
 
