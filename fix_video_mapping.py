@@ -19,7 +19,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from database import get_session, MediaMetadata
+from database import get_session
+from sqlalchemy import text
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -158,6 +159,8 @@ class VideoMappingFixer:
         """
         Update database MediaMetadata.local_path to match renamed files.
         
+        Uses raw SQL to work with current schema (before migration).
+        
         Args:
             rename_map: Dict mapping old_path -> new_path
             files_by_tweet: Dict mapping tweet_id -> list of original video files
@@ -169,15 +172,21 @@ class VideoMappingFixer:
         logger.info("Updating database mappings...")
         
         with get_session() as session:
-            # Get all media metadata records
-            all_media = session.query(MediaMetadata).filter(
-                MediaMetadata.media_type == 'video'
-            ).all()
+            # Get all video records using raw SQL
+            sql = text("""
+                SELECT tweet_id, local_path
+                FROM media_metadata
+                WHERE media_type = 'video'
+            """)
+            
+            result = session.execute(sql)
+            all_media = result.fetchall()
             
             logger.info(f"Found {len(all_media)} video records in database")
             
-            for media in all_media:
-                tweet_id = str(media.tweet_id)
+            for row in all_media:
+                tweet_id = str(row[0])
+                old_db_path = row[1]
                 
                 # Check if this tweet has videos in our files_by_tweet mapping
                 if tweet_id not in files_by_tweet:
@@ -205,8 +214,15 @@ class VideoMappingFixer:
                 # Update database
                 if new_path and Path(new_path).exists():
                     try:
-                        old_db_path = media.local_path
-                        media.local_path = new_path  # type: ignore
+                        update_sql = text("""
+                            UPDATE media_metadata
+                            SET local_path = :new_path
+                            WHERE tweet_id = :tweet_id
+                        """)
+                        session.execute(update_sql, {
+                            'new_path': new_path,
+                            'tweet_id': int(tweet_id)
+                        })
                         session.commit()
                         logger.info(f"✓ Updated DB: {tweet_id}")
                         logger.debug(f"  Old: {old_db_path}")
@@ -221,21 +237,31 @@ class VideoMappingFixer:
                     self.stats["db_errors"] += 1
 
     def verify_mappings(self):
-        """Verify that all database mappings point to existing files."""
+        """
+        Verify that all database mappings point to existing files.
+        
+        Uses raw SQL to work with current schema (before migration).
+        """
         logger.info("\nVerifying database mappings...")
         
         with get_session() as session:
-            all_media = session.query(MediaMetadata).filter(
-                MediaMetadata.media_type == 'video',
-                MediaMetadata.local_path.isnot(None)
-            ).all()
+            # Get all video records with local_path using raw SQL
+            sql = text("""
+                SELECT tweet_id, local_path
+                FROM media_metadata
+                WHERE media_type = 'video'
+                AND local_path IS NOT NULL
+            """)
+            
+            result = session.execute(sql)
+            all_media = result.fetchall()
             
             correct = 0
             incorrect = 0
             
-            for media in all_media:
-                tweet_id = str(media.tweet_id)
-                local_path = media.local_path
+            for row in all_media:
+                tweet_id = str(row[0])
+                local_path = row[1]
                 
                 # Check if file exists
                 if not Path(local_path).exists():
