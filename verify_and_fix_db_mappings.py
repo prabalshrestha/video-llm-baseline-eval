@@ -85,29 +85,50 @@ def verify_and_fix_mappings(videos_dir="data/videos", fix=False):
         to_update = []
         
         for row in db_records:
-            tweet_id = str(row[0])
+            db_tweet_id = str(row[0])
             db_path = row[1]
             
-            # Check if tweet has renamed files
-            if tweet_id not in video_files:
-                logger.warning(f"⚠️  Tweet {tweet_id} in DB but no renamed files found")
+            # Extract tweet ID from the OLD path in database
+            # Format: /path/to/video_NNN_TWEETID.mp4
+            old_filename = Path(db_path).name
+            tweet_id_from_filename = None
+            
+            # Try to extract from old format
+            match = re.search(r'video_\d+_(\d+)\.mp4', old_filename)
+            if match:
+                tweet_id_from_filename = match.group(1)
+            else:
+                # Maybe already in new format?
+                match = re.search(r'^(\d+)_\d+\.mp4$', old_filename)
+                if match:
+                    tweet_id_from_filename = match.group(1)
+            
+            if not tweet_id_from_filename:
+                logger.warning(f"⚠️  Cannot extract tweet ID from path: {db_path}")
                 missing += 1
                 continue
             
-            # Get expected path (first video for this tweet)
-            expected_path = video_files[tweet_id][0]['path']
+            # Check if we have a renamed file for this tweet ID
+            if tweet_id_from_filename not in video_files:
+                logger.warning(f"⚠️  Tweet {tweet_id_from_filename} (from filename) not in renamed files")
+                missing += 1
+                continue
+            
+            # Get expected path (first video for this tweet based on filename tweet ID)
+            expected_path = video_files[tweet_id_from_filename][0]['path']
             
             # Compare paths
             if db_path == expected_path:
                 correct += 1
             else:
                 incorrect += 1
-                logger.warning(f"✗ MISMATCH: Tweet {tweet_id}")
-                logger.warning(f"  DB has: {db_path}")
-                logger.warning(f"  Should be: {expected_path}")
+                if incorrect <= 5:  # Show first 5 mismatches
+                    logger.warning(f"✗ MISMATCH: DB tweet_id={db_tweet_id}, filename tweet_id={tweet_id_from_filename}")
+                    logger.warning(f"  DB has: {db_path}")
+                    logger.warning(f"  Should be: {expected_path}")
                 
                 to_update.append({
-                    'tweet_id': int(tweet_id),
+                    'tweet_id': int(db_tweet_id),  # Use DB tweet_id for WHERE clause
                     'old_path': db_path,
                     'new_path': expected_path
                 })
