@@ -62,12 +62,13 @@ class TwitterService:
 
         existing_ids = {str(t[0]) for t in existing_tweets}
 
-        # Filter out existing
-        tweets_to_fetch = [tid for tid in tweet_ids if tid not in existing_ids]
+        # Deduplicate input tweet IDs and filter out existing
+        unique_tweet_ids = list(set(tweet_ids))
+        tweets_to_fetch = [tid for tid in unique_tweet_ids if tid not in existing_ids]
 
-        logger.info(f"Total tweets: {len(tweet_ids)}")
-        logger.info(f"Already have API data: {len(existing_ids)}")
-        logger.info(f"Need to fetch: {len(tweets_to_fetch)}")
+        logger.info(f"Unique tweet IDs to check: {len(unique_tweet_ids)}")
+        logger.info(f"Already have API data in DB: {len(existing_ids)}")
+        logger.info(f"Need to fetch from API: {len(tweets_to_fetch)}")
 
         return tweets_to_fetch
 
@@ -114,7 +115,7 @@ class TwitterService:
 
                     params = {
                         "ids": ",".join(str(tid) for tid in batch),
-                        "tweet.fields": "created_at,author_id,public_metrics,text,entities,attachments",
+                        "tweet.fields": "created_at,author_id,public_metrics,text,entities,attachments,lang,referenced_tweets",
                         "user.fields": "name,username,verified",
                         "expansions": "author_id,attachments.media_keys",
                         "media.fields": "type,url,duration_ms,preview_image_url",
@@ -151,6 +152,10 @@ class TwitterService:
                                 "retweets": metrics.get("retweet_count", 0),
                                 "replies": metrics.get("reply_count", 0),
                                 "quotes": metrics.get("quote_count", 0),
+                                "lang": tweet.get("lang"),  # Language code
+                                "referenced_tweets": tweet.get(
+                                    "referenced_tweets"
+                                ),  # For identifying retweets/replies
                                 "raw_response": data,  # Store full API response
                             }
 
