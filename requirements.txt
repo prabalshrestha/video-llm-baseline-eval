@@ -18,6 +18,13 @@ anthropic>=0.18.0
 google-generativeai>=0.3.0
 pydantic>=2.0.0
 
+# Qwen VL models (optional - for Qwen evaluation)
+# Install with: pip install torch transformers qwen-vl-utils dashscope
+torch>=2.0.0  # Uncomment for local Qwen inference
+transformers>=4.37.0  # Uncomment for local Qwen inference
+qwen-vl-utils>=0.0.1  # Uncomment for local Qwen inference
+dashscope>=1.14.0  # Uncomment for Qwen API access
+
 # Evaluation metrics
 rouge-score>=0.1.2
 nltk>=3.8.0

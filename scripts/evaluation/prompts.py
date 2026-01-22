@@ -29,7 +29,7 @@ class PromptTemplate:
     ) -> str:
         """
         Generate a structured prompt for video misinformation analysis.
-        
+
         This prompt is designed for models with structured output (JSON schema enforcement).
 
         Args:
@@ -48,6 +48,8 @@ class PromptTemplate:
         # Model-specific video instruction
         if model_type == "gpt4o":
             video_instruction = "Analyze the video frames carefully to determine whether the content is misleading or contains misinformation."
+        elif model_type == "qwen":
+            video_instruction = "Watch the video carefully, analyzing both visual and audio content to determine whether the content is misleading or contains misinformation."
         else:
             video_instruction = "Watch the video carefully and analyze whether the content is misleading or contains misinformation."
 

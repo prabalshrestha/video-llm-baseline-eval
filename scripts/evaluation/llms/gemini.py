@@ -26,14 +26,27 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiService(VideoLLMService):
-    """Google Gemini 1.5 Pro service for video analysis with structured output."""
+    """Google Gemini service for video analysis with structured output.
 
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize Gemini service."""
+    Supports multiple Gemini models:
+    - gemini-1.5-pro (default) - Original workhorse model
+    - gemini-2.5-flash - Best price-performance (stable)
+    - gemini-2.5-pro - Advanced thinking model
+    """
+
+    def __init__(
+        self, api_key: Optional[str] = None, model_name: str = "gemini-1.5-pro"
+    ):
+        """Initialize Gemini service.
+
+        Args:
+            api_key: Google AI Studio API key (if None, loads from GEMINI_API_KEY env var)
+            model_name: Gemini model to use (gemini-1.5-pro, gemini-2.0-flash-exp, gemini-exp-1206)
+        """
         super().__init__(api_key)
         if not self.api_key:
             self.api_key = os.getenv("GEMINI_API_KEY")
-        self.model_name = "gemini-1.5-pro"
+        self.model_name = model_name
         self._genai = None
         self._model = None
 
@@ -188,8 +201,17 @@ if __name__ == "__main__":
     print("Testing Gemini Service...")
     print("=" * 70)
 
+    # Test default model
     service = GeminiService()
+    print(f"Default Model: {service.model_name}")
     print(f"Gemini Service available: {service.is_available()}")
+
+    # Test other models
+    print("\nSupported Gemini Models:")
+    models = ["gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-exp-1206"]
+    for model in models:
+        service = GeminiService(model_name=model)
+        print(f"  - {model}")
 
     if not service.is_available():
         print("\nTo enable Gemini service, set environment variable:")

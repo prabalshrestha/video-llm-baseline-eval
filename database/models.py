@@ -9,6 +9,7 @@ Tables:
 
 from datetime import datetime
 from typing import Optional
+import sqlalchemy as sa
 from sqlalchemy import (
     Column,
     BigInteger,
@@ -127,7 +128,7 @@ class Tweet(Base):
     
     # Relationships
     notes = relationship("Note", back_populates="tweet", cascade="all, delete-orphan")
-    media_metadata = relationship("MediaMetadata", back_populates="tweet", uselist=False, cascade="all, delete-orphan")
+    media_metadata = relationship("MediaMetadata", back_populates="tweet", cascade="all, delete-orphan")  # Now one-to-many
     
     def __repr__(self):
         return f"<Tweet(tweet_id={self.tweet_id}, author={self.author_username}, likes={self.likes})>"
@@ -137,13 +138,19 @@ class MediaMetadata(Base):
     """
     Media metadata table - stores yt-dlp scraped metadata for videos and images.
     
-    One-to-one relationship with tweets.
+    One-to-many relationship with tweets (supports multiple videos per tweet).
     """
     
     __tablename__ = "media_metadata"
     
-    # Primary key and foreign key (one-to-one)
-    tweet_id = Column(BigInteger, ForeignKey("tweets.tweet_id", ondelete="CASCADE"), primary_key=True, index=True)
+    # Primary key - unique identifier for each media item
+    media_key = Column(String(255), primary_key=True, index=True)
+    
+    # Foreign key to tweets (one-to-many: one tweet can have multiple videos)
+    tweet_id = Column(BigInteger, ForeignKey("tweets.tweet_id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Video index for ordering (1, 2, 3, etc. for videos in the same tweet)
+    video_index = Column(Integer, nullable=False, default=1, index=True)
     
     # Media identification
     media_id = Column(String(255), nullable=True)
@@ -173,8 +180,15 @@ class MediaMetadata(Base):
     # Relationships
     tweet = relationship("Tweet", back_populates="media_metadata")
     
+    # Unique constraint to prevent duplicate video_index per tweet
+    __table_args__ = (
+        Index('idx_media_metadata_tweet_id', 'tweet_id'),
+        Index('idx_media_metadata_video_index', 'video_index'),
+        sa.UniqueConstraint('tweet_id', 'video_index', name='uq_media_metadata_tweet_video_idx'),
+    )
+    
     def __repr__(self):
-        return f"<MediaMetadata(tweet_id={self.tweet_id}, media_type={self.media_type}, duration_ms={self.duration_ms})>"
+        return f"<MediaMetadata(media_key={self.media_key}, tweet_id={self.tweet_id}, video_index={self.video_index}, media_type={self.media_type})>"
 
 
 # Create indexes for common queries

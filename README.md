@@ -5,23 +5,30 @@ Evaluating Video Large Language Models for detecting and providing context to po
 ## Quick Start
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 pip install -r requirements.txt
 
-# Run everything (ONE command!)
+# 2. Set up environment variables (required for evaluation)
+cp env.template .env
+# Edit .env and add your API keys
+
+# 3. Set up database
+python setup_database.py
+
+# 4. Run everything (ONE command!)
 python main.py pipeline
 
 # Or step by step
 python main.py download           # Download Community Notes
 python main.py filter             # Filter for videos
 python main.py videos --limit 30  # Download videos
-python main.py dataset            # Create evaluation dataset ⭐
+python main.py dataset            # Create evaluation dataset
 python main.py status             # Check your data
 ```
 
-## Database-Powered Pipeline 🔄
+## Database-Powered Pipeline
 
-**NEW:** All scripts now use PostgreSQL database for efficient data management!
+All scripts use PostgreSQL database for efficient data management!
 
 ### Benefits
 
@@ -30,9 +37,8 @@ python main.py status             # Check your data
 - ✅ **Single Source of Truth**: No CSV sync issues
 - ✅ **Easy Querying**: SQL joins across notes, tweets, and videos
 - ✅ **Thread-Safe**: Proper session management for parallel processing
-- ✅ **Production-Ready**: All critical SQLAlchemy issues resolved
 
-### Quick Setup
+### Database Setup
 
 ```bash
 # 1. Install PostgreSQL (if not already installed)
@@ -46,65 +52,12 @@ createdb video_llm_eval
 # 3. Set environment variables in .env file
 echo 'DATABASE_URL="postgresql://localhost/video_llm_eval"' >> .env
 
-# Optional: Set custom video download path (useful for different drives/servers)
-# export VIDEO_DOWNLOAD_PATH='/mnt/external_drive/videos'
-
 # 4. Initialize database
-python3 setup_database.py
+python setup_database.py
 
-# 5. Import existing data (if you have CSV exports)
-./import_all_data.sh
-
-# 6. Run pipeline (skips existing data automatically)
-python scripts/data_processing/identify_video_notes.py
-python scripts/data_processing/download_videos.py --limit 50 --random  # Random sampling for diversity
-python scripts/data_processing/create_dataset.py
+# 5. Run pipeline (skips existing data automatically)
+python main.py pipeline
 ```
-
-### Import Existing Data
-
-If you have CSV exports from a previous run:
-
-```bash
-# Quick import (auto-detects latest files)
-./import_all_data.sh
-
-# Or with options
-python3 import_from_exports.py --exports-dir data/exports
-
-# Verify import
-python3 test_import.py
-```
-
-See **[QUICK_START.md](QUICK_START.md)** for 3-command setup or **[DATABASE_IMPORT.md](DATABASE_IMPORT.md)** for detailed import guide.
-
-### Force Options (when needed)
-
-```bash
-# Force re-process everything
-python scripts/data_processing/identify_video_notes.py --force
-python scripts/data_processing/download_videos.py --force
-python scripts/data_processing/create_dataset.py --force-api-fetch
-```
-
-### Random Sampling (for diversity)
-
-Both video downloads and dataset creation support random sampling to increase diversity:
-
-```bash
-# Download videos with random sampling
-python scripts/data_processing/download_videos.py --limit 50 --random --seed 42
-
-# Create dataset with random sampling
-python scripts/data_processing/create_dataset.py --sample-size 100 --random-seed 42
-```
-
-**Benefits:**
-
-- Increases diversity across different topics and content types
-- Avoids biases from sequential selection
-- Reproducible with fixed seed values
-- Recommended for evaluation datasets
 
 ### Database Schema
 
@@ -120,6 +73,33 @@ python scripts/data_processing/create_dataset.py --sample-size 100 --random-seed
 - JSONB columns for flexible raw data storage
 - Indexed for fast queries
 - SQLAlchemy ORM + Alembic migrations
+
+### Advanced Options
+
+**Random Sampling** (for diversity):
+
+```bash
+# Download videos with random sampling
+python scripts/data_processing/download_videos.py --limit 50 --random --seed 42
+
+# Create dataset with random sampling
+python scripts/data_processing/create_dataset.py --sample-size 100 --random-seed 42
+```
+
+**Force Re-processing** (when needed):
+
+```bash
+python scripts/data_processing/identify_video_notes.py --force
+python scripts/data_processing/download_videos.py --force
+python scripts/data_processing/create_dataset.py --force-api-fetch
+```
+
+**Custom Video Download Path:**
+
+```bash
+# In your .env file:
+VIDEO_DOWNLOAD_PATH=/mnt/external_drive/videos
+```
 
 ## Project Goal
 
@@ -279,35 +259,9 @@ with get_session() as session:
     print(stats)
 ```
 
-### Configuration Options
-
-**Custom Video Download Path:**
-
-By default, videos are downloaded to `data/videos/`. To store videos on a different drive or location (useful for servers with limited space), set the `VIDEO_DOWNLOAD_PATH` environment variable:
-
-```bash
-# In your .env file:
-VIDEO_DOWNLOAD_PATH=/mnt/external_drive/videos
-
-# Or export directly:
-export VIDEO_DOWNLOAD_PATH=/mnt/external_drive/videos
-
-# Then run download script normally:
-python scripts/data_processing/download_videos.py --limit 50
-```
-
-**Benefits:**
-
-- Store videos on external drive with more space
-- Use network-attached storage (NAS)
-- Separate data and video storage on servers
-- Easily switch between different storage locations
-
-**Note:** The path will be created automatically if it doesn't exist. Make sure you have write permissions for the specified path.
-
 ### Troubleshooting
 
-**Connection Issues:**
+**PostgreSQL Connection Issues:**
 
 ```bash
 # Check PostgreSQL is running
@@ -318,274 +272,38 @@ brew services start postgresql  # macOS
 sudo service postgresql start   # Linux
 ```
 
-**Import Errors:**
+**Database Initialization:**
 
 ```bash
-# Re-import data
-python setup_database.py --import-notes --import-tweets
+# Reset and initialize database
+dropdb video_llm_eval  # Warning: deletes all data
+createdb video_llm_eval
+python setup_database.py
 ```
-
-**Video Download Path Issues:**
-
-```bash
-# Check if path exists and is writable
-mkdir -p /your/custom/path
-chmod u+w /your/custom/path
-
-# Test with absolute path
-export VIDEO_DOWNLOAD_PATH=/absolute/path/to/videos
-python scripts/data_processing/download_videos.py --limit 1
-```
-
-**Video Paths After Server Sync:**
-
-If you sync your database to a different server, video paths may be incorrect. Fix them:
-
-```bash
-# Preview changes (dry run)
-python3 fix_video_paths.py --dry-run
-
-# Apply fixes (updates database paths)
-python3 fix_video_paths.py
-```
-
-This updates paths in the database to match your current `VIDEO_DOWNLOAD_PATH` or default location. The script:
-
-- ✅ Extracts filenames from old paths
-- ✅ Reconstructs paths using current environment
-- ✅ Only updates if files actually exist
-- ✅ Respects `VIDEO_DOWNLOAD_PATH` env var
-
-See [`database/README.md`](database/README.md) for more examples and helper functions.
 
 ## Dataset Structure
 
-The dataset includes **all necessary fields** for evaluation:
+The dataset includes all necessary fields for evaluation:
 
-✅ **Video Information**: filename, path, duration, title, uploader
-✅ **Tweet Details**: tweet ID, URL, **tweet text/content**, author info, engagement metrics  
-✅ **Community Notes**: note ID, classification, **human explanation**, misleading reasons
+- **Video Information**: filename, path, duration, title, uploader
+- **Tweet Details**: tweet ID, URL, text/content, author info, engagement metrics
+- **Community Notes**: note ID, classification, human explanation, misleading reasons
 
 ### Creating the Dataset
-
-**One simple command:**
 
 ```bash
 python main.py dataset
 ```
 
-This automatically:
+This automatically loads videos and community notes, fetches tweet data (if Twitter API available), and creates a complete dataset.
 
-- ✅ Loads videos and community notes
-- ✅ Fetches tweet data (if Twitter API available)
-- ✅ Falls back to video metadata (if no API)
-- ✅ Creates complete dataset in one file
-
-### Output
+**Output:**
 
 ```
 data/evaluation/
-  ├── dataset.json    # Complete dataset ⭐
+  ├── dataset.json    # Complete dataset
   └── dataset.csv     # Same in CSV format
 ```
-
-### Sample Entry
-
-```json
-{
-  "video": {
-    "filename": "video_003.mp4",
-    "duration_seconds": 35.8,
-    "path": "data/videos/video_003.mp4"
-  },
-  "tweet": {
-    "tweet_id": "1882510502200508633",
-    "text": "The President of Chile showed Speed something crazy😭",
-    "author_name": "Username",
-    "engagement": { "likes": 15000, "retweets": 3200 }
-  },
-  "community_note": {
-    "note_id": "1882595996980347228",
-    "summary": "The president of Chile is Gabriel Boric Font...",
-    "is_misleading": true
-  },
-  "metadata": {
-    "sample_id": "video_003",
-    "has_api_data": true
-  }
-}
-```
-
-### Complete Field Reference
-
-**Video Fields:**
-
-- `filename`, `index`, `duration_seconds`, `path`, `title`, `uploader`
-
-**Tweet Fields:**
-
-- `tweet_id`, `url`, `text` (content), `author_name`, `author_username`
-- `engagement`: `likes`, `retweets`, `replies`, `views`
-
-**Community Note Fields:**
-
-- `note_id`, `classification`, `summary` (fact-check explanation)
-- `is_misleading` (boolean), `created_at_millis`
-- `reasons`: `factual_error`, `manipulated_media`, `missing_context`, etc.
-
-**Metadata:**
-
-- `sample_id`, `has_api_data`, `created_at`
-
-## Filtering Method
-
-### Accurate Media Type Checking (Current)
-
-Uses `yt-dlp` to download metadata and checks `_type` field. ~95-99% accurate.
-
-- ✅ Highly accurate - checks actual media type
-- ✅ No API credentials needed
-- ✅ No false positives from keyword matching
-- ✅ Parallel processing for efficiency
-
-**How it works:**
-
-1. Downloads only metadata (info.json) for each media note
-2. Checks the `_type` field from Twitter's actual media data
-3. Keeps only notes where `_type == "video"`
-
-**Usage:**
-
-```bash
-# Test with 100 notes
-python main.py filter --sample 100
-
-# Process all media notes
-python main.py filter
-```
-
-## Video LLMs Implemented
-
-### Commercial (Implemented ✅)
-
-- **Gemini 1.5 Pro** (Google) - Best for long videos, 2M token context window
-- **GPT-4o** (OpenAI) - Excellent for short clips with OCR-heavy content
-
-### Future Models
-
-- Claude 3.5 Sonnet (Anthropic)
-- Qwen2.5-VL
-- Open source models (LLaVA, Video-LLaMA)
-
-## Evaluation
-
-### Setup
-
-1. **Install evaluation dependencies:**
-
-```bash
-pip install -r requirements.txt
-```
-
-2. **Configure environment variables:**
-   Create a `.env` file in the project root:
-
-```bash
-# Database (required for database-powered pipeline)
-DATABASE_URL=postgresql://localhost/video_llm_eval
-
-# Video Download Path (optional - useful for storing videos on external drive/server)
-# If not set, defaults to data/videos/
-# VIDEO_DOWNLOAD_PATH=/mnt/external_drive/videos
-
-# Twitter API (optional - for fetching tweet data)
-# TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
-
-# LLM API Keys (required for evaluation)
-# Get Gemini API key at: https://ai.google.dev/
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Get OpenAI API key at: https://platform.openai.com/
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
-3. **Test setup:**
-
-```bash
-python scripts/evaluation/test_evaluation_setup.py
-```
-
-### Running Evaluation
-
-**Quick start:**
-
-```bash
-# Evaluate with both models on all videos
-python main.py evaluate
-
-# Evaluate with specific model on limited samples
-python main.py evaluate --models gemini --limit 5
-python main.py evaluate --models gpt4o --limit 3
-
-# Evaluate with both models
-python main.py evaluate --models gemini,gpt4o
-```
-
-### Output
-
-The evaluation generates:
-
-- **`llm_results_{timestamp}.json`** - Complete results with all metrics
-- **`evaluation_summary_{timestamp}.txt`** - Human-readable summary report
-
-### Models Available
-
-1. **Gemini 1.5 Pro** - Best for long videos, native audio-visual understanding
-2. **GPT-4o** - Excellent for short clips with text/chart content
-
-### Metrics
-
-The evaluation compares LLM outputs with human Community Notes using:
-
-- **ROUGE scores** - Text overlap (ROUGE-1, ROUGE-2, ROUGE-L)
-- **BLEU score** - Precision-focused similarity
-- **Semantic similarity** - Meaning-based comparison using embeddings
-- **Classification accuracy** - Correct identification of misleading content
-- **Reason overlap** - Precision/recall for misinformation categories
-
-## Next Steps
-
-1. ✅ **Create dataset** - `python main.py dataset`
-2. ✅ **Setup evaluation** - Configure API keys
-3. ✅ **Run evaluation** - `python main.py evaluate`
-4. **Analyze results** - Compare LLM outputs with human notes
-5. **Refine prompts** - Improve accuracy based on findings
-
-## Environment Setup
-
-### Required
-
-```bash
-pip install pandas requests numpy python-dotenv yt-dlp
-```
-
-### Optional (for LLM evaluation)
-
-```bash
-pip install openai anthropic google-generativeai
-```
-
-### Twitter API (optional, for exact video identification)
-
-Create `.env` file:
-
-```
-TWITTER_BEARER_TOKEN=your_token
-```
-
-Apply for API: https://developer.twitter.com
-
-## Resources
 
 ## How It Works
 
@@ -595,8 +313,7 @@ Apply for API: https://developer.twitter.com
 python main.py download
 ```
 
-Downloads latest Community Notes data from Twitter/X public dataset (~2.2M notes).
-Filters for media notes (images + videos).
+Downloads latest Community Notes data from X/Twitter's public dataset (~2.2M notes) and filters for media notes (images + videos).
 
 ### 2. Identify Video Notes
 
@@ -604,9 +321,7 @@ Filters for media notes (images + videos).
 python main.py filter
 ```
 
-Identifies actual videos by checking media type from Twitter metadata (~51K video notes expected).
-Uses `yt-dlp` to download metadata only (not video files) and checks the `_type` field.
-**Accuracy:** ~95-99% - much more accurate than keyword-based filtering.
+Uses `yt-dlp` to download metadata and checks media type. Highly accurate (~95-99%) with no false positives from keyword matching.
 
 ### 3. Download Videos
 
@@ -614,10 +329,7 @@ Uses `yt-dlp` to download metadata only (not video files) and checks the `_type`
 python main.py videos --limit 30
 ```
 
-Downloads videos from tweets using `yt-dlp`. Saves:
-
-- `video_XXX.mp4` - The video file
-- `video_XXX.info.json` - Video metadata (author, engagement, etc.)
+Downloads videos from tweets using `yt-dlp`. Saves video files (`.mp4`) and metadata (`.info.json`).
 
 ### 4. Create Dataset
 
@@ -625,62 +337,102 @@ Downloads videos from tweets using `yt-dlp`. Saves:
 python main.py dataset
 ```
 
-Creates complete evaluation dataset by:
+Creates complete evaluation dataset by combining videos, community notes, and tweet data.
 
-1. Loading videos and community notes
-2. Fetching tweet data (if Twitter API available)
-3. Combining everything into one unified structure
-4. Saving as JSON and CSV
+## Evaluation
 
-**Output:** `data/evaluation/dataset.json` ⭐
+### Setup
 
-### Using Twitter API (Optional)
+1. **Install dependencies:**
 
-For complete tweet data (text, author, engagement):
+```bash
+pip install -r requirements.txt
+```
 
-1. Get API credentials: https://developer.twitter.com
-2. Add to `.env` file:
-   ```
-   TWITTER_BEARER_TOKEN=your_token_here
-   ```
-3. Run `python main.py dataset` - automatically uses API!
+2. **Configure API keys:**
 
-Without API: Uses video metadata (limited info).
+```bash
+cp env.template .env
+# Edit .env and add your API keys
+```
 
-## External Resources
+Get API keys:
+- **Gemini**: https://makersuite.google.com/app/apikey
+- **OpenAI**: https://platform.openai.com/api-keys
+
+3. **Test setup:**
+
+```bash
+python scripts/evaluation/test_evaluation_setup.py
+```
+
+### Running Evaluation
+
+```bash
+# Evaluate with both models
+python main.py evaluate
+
+# Evaluate with specific model
+python main.py evaluate --models gemini --limit 5
+python main.py evaluate --models gpt4o --limit 3
+```
+
+### Models
+
+1. **Gemini 1.5 Pro** - Best for long videos, 2M token context window
+2. **GPT-4o** - Excellent for short clips with OCR-heavy content
+
+### Metrics
+
+The evaluation compares LLM outputs with human Community Notes:
+
+- **ROUGE/BLEU scores** - Text similarity
+- **Semantic similarity** - Meaning-based comparison using embeddings
+- **Classification accuracy** - Correct identification of misleading content
+- **Reason overlap** - Precision/recall for misinformation categories
+
+### Output
+
+```
+data/evaluation/runs/
+  ├── run_YYYYMMDD_HHMMSS/
+  │   ├── unified_results.json      # Complete results
+  │   ├── summary_report.txt        # Human-readable summary
+  │   └── config.json               # Run configuration
+  └── latest/                       # Symlink to latest run
+```
+
+## Twitter API (Optional)
+
+For complete tweet data (text, author, engagement), add Twitter API credentials to `.env`:
+
+```bash
+TWITTER_BEARER_TOKEN=your_token_here
+```
+
+Apply for API access: https://developer.twitter.com
+
+Without API: The system falls back to video metadata (limited info).
+
+## Resources
 
 - **Community Notes Guide**: https://communitynotes.x.com/guide/en/about/introduction
 - **Data Download**: https://communitynotes.x.com/guide/en/under-the-hood/download-data
 - **Research Paper**: https://arxiv.org/abs/2403.11169
 - **Twitter API**: https://developer.twitter.com
 
-## Research Timeline
+## Key Commands
 
-- **Week 1-2**: ✅ Data collection complete
-- **Week 3-4**: LLM setup and initial testing
-- **Week 5-6**: Full evaluation
-- **Week 7-8**: Analysis and reporting
+```bash
+python main.py pipeline     # Run complete data collection
+python main.py dataset      # Create evaluation dataset
+python main.py evaluate     # Evaluate Video LLMs
+python main.py status       # Check data status
+python main.py help         # Show all commands
+```
 
-## Key Features
-
-- ✅ Single entry point (`main.py`)
-- ✅ Clean data models
-- ✅ 20 videos with Community Notes
-- ✅ JSON mappings for evaluation
-- ✅ Ready for LLM testing
+**Complete Workflow:** `download` → `filter` → `videos` → `dataset` → `evaluate`
 
 ## License
 
-Research use only. Respect Twitter's ToS and Community Notes data usage policies.
-
----
-
-**Quick Commands**
-
-- `python main.py pipeline` - Run data collection
-- `python main.py dataset` - Create evaluation dataset ⭐
-- `python main.py evaluate` - Evaluate Video LLMs 🎯
-- `python main.py status` - Check data
-- `python main.py help` - Show commands
-
-**Complete Workflow:** `download` → `filter` → `videos` → `dataset` → `evaluate` → analyze!
+Research use only. Respect X/Twitter's Terms of Service and Community Notes data usage policies.
