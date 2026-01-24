@@ -166,6 +166,7 @@ class RandomSamplePipeline:
     def create_dataset(self):
         """
         Create evaluation dataset using the existing create_dataset script.
+        Passes the status filter to only include matching notes.
         
         Returns:
             True if successful, False otherwise
@@ -176,7 +177,8 @@ class RandomSamplePipeline:
         
         cmd = [
             sys.executable,
-            "scripts/data_processing/create_dataset.py"
+            "scripts/data_processing/create_dataset.py",
+            "--note-status", self.status
         ]
         
         if self.force:

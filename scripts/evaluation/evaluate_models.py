@@ -259,6 +259,7 @@ class VideoLLMEvaluator:
                         "tweet_text": result.get("tweet_text"),
                         "human_note": result.get("human_note"),
                         "output": result[output_key],
+                        "response_time_seconds": result[output_key].get("response_time_seconds"),
                     }
 
                     if metrics_key in result:
@@ -314,6 +315,7 @@ class VideoLLMEvaluator:
                     "BLEU",
                     "Semantic Sim",
                     "Reason F1",
+                    "Avg Time (s)",
                     "Samples",
                 ]
             )
@@ -337,6 +339,7 @@ class VideoLLMEvaluator:
                         f"{stats.get('bleu', 0):.3f}",
                         f"{stats.get('semantic_similarity', 0):.3f}",
                         f"{stats.get('reason_f1', 0):.3f}",
+                        f"{stats.get('avg_response_time', 0):.2f}",
                         stats.get("total_evaluated", 0),
                     ]
                 )
@@ -435,10 +438,18 @@ class VideoLLMEvaluator:
             if service.is_available():
                 logger.info(f"Evaluating {sample_id} with {model_name}...")
                 try:
+                    import time
+                    start_time = time.time()
+                    
                     output = service.analyze_video(
                         video_path, tweet_text, author_name, author_username
                     )
+                    
+                    elapsed_time = time.time() - start_time
+                    output["response_time_seconds"] = round(elapsed_time, 2)
+                    
                     result[f"{model_name}_output"] = output
+                    logger.info(f"  Completed in {elapsed_time:.2f}s")
 
                     # Calculate metrics
                     if output.get("success"):
@@ -646,6 +657,18 @@ class VideoLLMEvaluator:
                 correct / len(model_results) if model_results else 0
             )
             stats[model]["total_evaluated"] = len(model_results)
+            
+            # Response time statistics
+            response_times = [
+                r[f"{model}_output"].get("response_time_seconds", 0)
+                for r in model_results
+                if f"{model}_output" in r and r[f"{model}_output"].get("response_time_seconds")
+            ]
+            if response_times:
+                stats[model]["avg_response_time"] = sum(response_times) / len(response_times)
+                stats[model]["min_response_time"] = min(response_times)
+                stats[model]["max_response_time"] = max(response_times)
+                stats[model]["total_response_time"] = sum(response_times)
 
         return stats
 
@@ -655,6 +678,14 @@ class VideoLLMEvaluator:
 
         f.write("Classification Performance:\n")
         f.write(f"  Accuracy: {stats.get('classification_accuracy', 0):.1%}\n\n")
+        
+        # Response time statistics
+        if "avg_response_time" in stats:
+            f.write("Response Time Performance:\n")
+            f.write(f"  Average: {stats.get('avg_response_time', 0):.2f}s\n")
+            f.write(f"  Min:     {stats.get('min_response_time', 0):.2f}s\n")
+            f.write(f"  Max:     {stats.get('max_response_time', 0):.2f}s\n")
+            f.write(f"  Total:   {stats.get('total_response_time', 0):.2f}s\n\n")
 
         f.write("Text Similarity Metrics:\n")
         f.write(f"  ROUGE-1:            {stats.get('rouge1', 0):.3f}\n")
@@ -691,10 +722,14 @@ class VideoLLMEvaluator:
                         m = result[metrics_key]
                         f.write(
                             f" | Correct={m.get('classification_correct', False)} "
-                            f"| Sem={m.get('semantic_similarity', 0):.2f}\n"
+                            f"| Sem={m.get('semantic_similarity', 0):.2f}"
                         )
-                    else:
-                        f.write("\n")
+                    
+                    # Add response time
+                    if output.get("response_time_seconds"):
+                        f.write(f" | Time={output['response_time_seconds']:.2f}s")
+                    
+                    f.write("\n")
 
 
 def main():

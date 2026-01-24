@@ -217,7 +217,9 @@ python main.py random --limit 40 --status CURRENTLY_RATED_NOT_HELPFUL
 1. Randomly samples tweets with notes of specified status (default: `CURRENTLY_RATED_HELPFUL`)
 2. Identifies which tweets contain videos using yt-dlp metadata
 3. Downloads the videos
-4. Creates the evaluation dataset
+4. Creates the evaluation dataset **with only the matching notes**
+
+**Key Feature:** If you request 100 videos with `--limit 100`, you'll get close to 100 tweets where each tweet has at least one note with the specified status, and the dataset will ONLY include notes matching that status.
 
 **Available Note Statuses:**
 
@@ -229,9 +231,10 @@ python main.py random --limit 40 --status CURRENTLY_RATED_NOT_HELPFUL
 
 - ✅ Maximum randomness using consistent random sampling
 - ✅ Filter by note status for targeted datasets
+- ✅ Only includes notes matching the filter (no extra notes)
 - ✅ Much faster than processing all 122K media notes
 - ✅ Reproducible with seed parameter
-- ✅ All-in-one command - no manual steps needed
+- ✅ API rate limit friendly - gets ~N tweets for --limit N
 
 ## Random Sampling in Pipeline
 
@@ -373,6 +376,28 @@ The dataset includes all necessary fields for evaluation:
 - **Tweet Details**: tweet ID, URL, text/content, author info, engagement metrics
 - **Community Notes**: note ID, classification, human explanation, misleading reasons
 
+### Dataset Versioning
+
+**All datasets are timestamped and preserved:**
+
+```
+data/evaluation/
+  ├── datasets/                      # Historical datasets
+  │   ├── dataset_20260123_202013.json
+  │   ├── dataset_20260123_202013.csv
+  │   ├── dataset_20260124_153045.json
+  │   └── dataset_20260124_153045.csv
+  └── latest/                        # Symlink to most recent
+      ├── dataset.json
+      └── dataset.csv
+```
+
+**Benefits:**
+- ✅ Full history preserved
+- ✅ Reproducible experiments
+- ✅ Easy to compare different runs
+- ✅ `latest/` always points to most recent
+
 ### Creating the Dataset
 
 ```bash
@@ -385,8 +410,11 @@ This automatically loads videos and community notes, fetches tweet data (if Twit
 
 ```
 data/evaluation/
-  ├── dataset.json    # Complete dataset
-  └── dataset.csv     # Same in CSV format
+  ├── datasets/dataset_YYYYMMDD_HHMMSS.json  # Timestamped version
+  ├── datasets/dataset_YYYYMMDD_HHMMSS.csv
+  └── latest/                                # Current version
+      ├── dataset.json
+      └── dataset.csv
 ```
 
 ## How It Works

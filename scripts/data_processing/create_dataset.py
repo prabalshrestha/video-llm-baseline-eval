@@ -36,6 +36,7 @@ class DatasetCreator:
         sample_size: int = None,
         random_seed: int = 42,
         api_data_only: bool = False,
+        note_status_filter: str = None,
     ):
         self.data_dir = Path(data_dir)
         self.output_dir = self.data_dir / "evaluation"
@@ -44,6 +45,7 @@ class DatasetCreator:
         self.sample_size = sample_size  # Number of samples to randomly select
         self.random_seed = random_seed  # For reproducible sampling
         self.api_data_only = api_data_only  # Only include tweets with existing API data
+        self.note_status_filter = note_status_filter  # Filter notes by status
 
         self.twitter = TwitterService(force=force_api_fetch)
 
@@ -187,6 +189,14 @@ class DatasetCreator:
             .filter(Note.tweet_id.in_(tweet_ids))
             .order_by(Note.tweet_id, Note.created_at_millis)
         )
+
+        # Apply note status filter if specified
+        if self.note_status_filter:
+            notes_query = notes_query.filter(
+                Note.current_status == self.note_status_filter
+            )
+            logger.info(f"Filtering notes by status: {self.note_status_filter}")
+
         all_notes = notes_query.all()
         logger.info(
             f"Found {len(all_notes)} total notes for {len(filtered_tweets)} tweets"
@@ -200,11 +210,13 @@ class DatasetCreator:
             notes_by_tweet[note.tweet_id].append(note)
 
         # Build final data structure: one entry per tweet with notes array
+        # Only include tweets that have matching notes
         data = []
+        skipped_no_matching_notes = 0
         for tweet, media in filtered_tweets:
             notes = notes_by_tweet.get(tweet.tweet_id, [])
             if not notes:
-                logger.warning(f"Tweet {tweet.tweet_id} has no notes, skipping")
+                skipped_no_matching_notes += 1
                 continue
 
             data.append(
@@ -218,6 +230,10 @@ class DatasetCreator:
         logger.info(
             f"Final dataset: {len(data)} tweets with {len(all_notes)} total notes"
         )
+        if skipped_no_matching_notes > 0:
+            logger.info(
+                f"  ✗ Skipped {skipped_no_matching_notes} tweets with no matching notes"
+            )
         if len(data) > 0:
             logger.info(f"  Average notes per tweet: {len(all_notes) / len(data):.2f}")
 
@@ -377,7 +393,7 @@ class DatasetCreator:
         return dataset
 
     def save_dataset(self, dataset: List[Dict]):
-        """Save dataset in multiple formats."""
+        """Save dataset in multiple formats with timestamp and latest symlink."""
         # Calculate statistics
         total_notes = sum(len(d["community_notes"]) for d in dataset)
 
@@ -395,6 +411,13 @@ class DatasetCreator:
             1 for d in dataset for note in d["community_notes"] if note["is_misleading"]
         )
 
+        # Create timestamp for this dataset
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Create datasets directory if it doesn't exist
+        datasets_dir = self.output_dir / "datasets"
+        datasets_dir.mkdir(parents=True, exist_ok=True)
+
         # Main JSON file
         output = {
             "dataset_info": {
@@ -402,8 +425,10 @@ class DatasetCreator:
                 "description": "Videos with tweets and community notes for misinformation detection (one record per tweet)",
                 "version": "3.0",  # Updated version
                 "created": datetime.now().isoformat(),
+                "timestamp": timestamp,
                 "total_tweets": len(dataset),
                 "total_notes": total_notes,
+                "note_status_filter": self.note_status_filter or "None",
             },
             "statistics": {
                 "total_tweets": len(dataset),
@@ -419,8 +444,8 @@ class DatasetCreator:
             "samples": dataset,
         }
 
-        # Save JSON
-        json_file = self.output_dir / "dataset.json"
+        # Save timestamped JSON
+        json_file = datasets_dir / f"dataset_{timestamp}.json"
         with open(json_file, "w", encoding="utf-8") as f:
             json.dump(output, f, indent=2, ensure_ascii=False)
         logger.info(f"✓ Saved: {json_file}")
@@ -464,7 +489,7 @@ class DatasetCreator:
                 }
                 flattened.append(flat)
 
-            csv_file = self.output_dir / "dataset.csv"
+            csv_file = datasets_dir / f"dataset_{timestamp}.csv"
             df = pd.DataFrame(flattened)
             df.to_csv(csv_file, index=False, encoding="utf-8")
             logger.info(
@@ -472,6 +497,39 @@ class DatasetCreator:
             )
         except Exception as e:
             logger.warning(f"Could not save CSV: {e}")
+
+        # Create 'latest' symlink directory
+        latest_dir = self.output_dir / "latest"
+
+        # Remove old symlink/directory if exists
+        if latest_dir.exists() or latest_dir.is_symlink():
+            if latest_dir.is_symlink():
+                latest_dir.unlink()
+            else:
+                import shutil
+
+                shutil.rmtree(latest_dir)
+
+        # Create symlink to latest dataset directory
+        try:
+            import os
+
+            os.symlink(
+                f"datasets/dataset_{timestamp}", latest_dir, target_is_directory=True
+            )
+            logger.info(
+                f"✓ Created symlink: {latest_dir} -> datasets/dataset_{timestamp}"
+            )
+        except (OSError, NotImplementedError) as e:
+            # Symlinks might not work on Windows, so copy files instead
+            logger.warning(f"Could not create symlink (using copy instead): {e}")
+            latest_dir.mkdir(exist_ok=True)
+            import shutil
+
+            shutil.copy2(json_file, latest_dir / "dataset.json")
+            if csv_file.exists():
+                shutil.copy2(csv_file, latest_dir / "dataset.csv")
+            logger.info(f"✓ Copied to: {latest_dir}")
 
     def run(self, use_api: bool = True) -> bool:
         """
@@ -553,8 +611,12 @@ class DatasetCreator:
                 logger.info(f"\nMisleading notes: {misleading_notes}")
                 logger.info(f"All tweets are original (no retweets/replies): ✓")
                 logger.info(f"All tweets are in English: ✓")
-                logger.info(f"\nOutput: {self.output_dir}/dataset.json")
-                logger.info(f"        {self.output_dir}/dataset.csv")
+                logger.info(f"\nOutput:")
+                logger.info(f"  Latest: {self.output_dir}/latest/dataset.json")
+                logger.info(f"          {self.output_dir}/latest/dataset.csv")
+                logger.info(
+                    f"  Timestamped: {self.output_dir}/datasets/dataset_{{timestamp}}.{{json,csv}}"
+                )
 
                 return True
 
@@ -595,19 +657,27 @@ def main():
         default=42,
         help="Random seed for reproducible sampling (default: 42)",
     )
+    parser.add_argument(
+        "--note-status",
+        type=str,
+        default=None,
+        help="Filter notes by status (e.g., CURRENTLY_RATED_HELPFUL, CURRENTLY_RATED_NOT_HELPFUL, NEEDS_MORE_RATINGS)",
+    )
     args = parser.parse_args()
 
     creator = DatasetCreator(
         force_api_fetch=args.force_api_fetch,
         sample_size=args.sample_size,
         random_seed=args.random_seed,
+        note_status_filter=args.note_status,
     )
     success = creator.run(use_api=not args.no_api)
 
     if success:
         print("\n✅ Dataset created successfully from database!")
-        print("📁 Check data/evaluation/dataset.json")
-        print("📁 Check data/evaluation/dataset.csv")
+        print("📁 Latest: data/evaluation/latest/dataset.json")
+        print("📁 Latest: data/evaluation/latest/dataset.csv")
+        print("📂 History: data/evaluation/datasets/dataset_*.{json,csv}")
     else:
         print("\n❌ Failed to create dataset")
         sys.exit(1)
