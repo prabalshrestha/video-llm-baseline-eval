@@ -21,7 +21,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from database import get_session, Note, Tweet, MediaMetadata
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -54,7 +54,7 @@ class RandomSamplePipeline:
         
         with get_session() as session:
             # Set random seed for this session (PostgreSQL-specific)
-            session.execute(f"SELECT setseed({self.seed / 2**32})")
+            session.execute(text(f"SELECT setseed({self.seed / 2**32})"))
             
             # Query tweets with specified status
             # Use random() for database-level randomization
