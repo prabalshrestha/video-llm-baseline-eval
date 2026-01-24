@@ -340,8 +340,8 @@ def main():
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,
-        help="Random seed for reproducibility (default: 42)",
+        default=None,
+        help="Random seed for reproducibility (default: random based on timestamp)",
     )
     
     parser.add_argument(

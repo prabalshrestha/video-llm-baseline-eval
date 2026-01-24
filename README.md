@@ -82,11 +82,11 @@ python main.py pipeline
 **Random Sampling** (for diversity):
 
 ```bash
-# Download videos with random sampling
-python scripts/data_processing/download_videos.py --limit 50 --random --seed 42
+# Download videos with random sampling (seed auto-generated)
+python scripts/data_processing/download_videos.py --limit 50 --random
 
-# Create dataset with random sampling
-python scripts/data_processing/create_dataset.py --sample-size 100 --random-seed 42
+# Create dataset with reproducible sampling
+python scripts/data_processing/create_dataset.py --sample-size 100 --random-seed 12345
 ```
 
 **Force Re-processing** (when needed):
@@ -165,21 +165,21 @@ All commands use `main.py`:
 
 ```bash
 # Quick random sample (RECOMMENDED) 🎲
-python main.py random --limit 30        # Random sample helpful videos
-python main.py random --limit 50 --seed 42  # Reproducible sampling
+python main.py random --limit 30        # Random sample helpful videos (new seed each time)
+python main.py random --limit 50 --seed 12345  # Reproducible sampling
 
 # Full pipeline
 python main.py pipeline                 # Run all steps (sequential)
 python main.py pipeline --random        # Run with random video sampling
-python main.py pipeline --limit 50 --random --seed 42  # Custom config
+python main.py pipeline --limit 50 --random --seed 12345  # Custom config
 
 # Individual steps
 python main.py download                 # Download Community Notes
 python main.py filter                   # Filter for videos
 python main.py videos --limit 30        # Download videos (sequential)
-python main.py videos --limit 30 --random --seed 42  # Random sampling
+python main.py videos --limit 30 --random --seed 12345  # Random sampling
 python main.py dataset                  # Create evaluation dataset
-python main.py dataset --sample-size 100 --seed 42   # With sampling
+python main.py dataset --sample-size 100 --seed 12345   # With sampling
 python main.py evaluate                 # Evaluate Video LLMs
 
 # Evaluation options
@@ -205,7 +205,7 @@ The `random` command is the **fastest way** to create a diverse evaluation datas
 python main.py random --limit 30
 
 # Sample 50 videos with reproducible seed
-python main.py random --limit 50 --seed 42
+python main.py random --limit 50 --seed 12345
 
 # Sample from different note statuses
 python main.py random --limit 20 --status NEEDS_MORE_RATINGS
@@ -242,7 +242,7 @@ You can also enable random sampling in the main pipeline:
 
 ```bash
 # Pipeline with random video sampling
-python main.py pipeline --limit 50 --random --seed 42
+python main.py pipeline --limit 50 --random --seed 12345
 
 # Pipeline without random sampling (sequential)
 python main.py pipeline --limit 30
@@ -251,7 +251,7 @@ python main.py pipeline --limit 30
 **Random Sampling Options (available in all commands):**
 
 - `--random`: Enable random video sampling
-- `--seed N`: Set random seed (default: 42)
+- `--seed N`: Set random seed for reproducibility (default: timestamp-based, different each run)
 - `--sample-size N`: Sample size for dataset creation
 
 **Example workflows:**
@@ -261,8 +261,8 @@ python main.py pipeline --limit 30
 python main.py pipeline --limit 50 --random --seed 123
 
 # Individual steps with random sampling
-python main.py videos --limit 30 --random --seed 42
-python main.py dataset --sample-size 100 --seed 42
+python main.py videos --limit 30 --random --seed 12345
+python main.py dataset --sample-size 100 --seed 12345
 python main.py evaluate
 
 # Mix sequential and random

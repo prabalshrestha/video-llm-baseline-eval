@@ -34,7 +34,7 @@ class DatasetCreator:
         data_dir: str = "data",
         force_api_fetch: bool = False,
         sample_size: int = None,
-        random_seed: int = 42,
+        random_seed: int = None,
         api_data_only: bool = False,
         note_status_filter: str = None,
     ):
@@ -43,7 +43,11 @@ class DatasetCreator:
         self.output_dir.mkdir(exist_ok=True)
         self.force_api_fetch = force_api_fetch
         self.sample_size = sample_size  # Number of samples to randomly select
-        self.random_seed = random_seed  # For reproducible sampling
+        self.random_seed = (
+            random_seed
+            if random_seed is not None
+            else int(datetime.now().timestamp() * 1000) % 2**32
+        )  # For reproducible sampling
         self.api_data_only = api_data_only  # Only include tweets with existing API data
         self.note_status_filter = note_status_filter  # Filter notes by status
 
@@ -654,8 +658,8 @@ def main():
     parser.add_argument(
         "--random-seed",
         type=int,
-        default=42,
-        help="Random seed for reproducible sampling (default: 42)",
+        default=None,
+        help="Random seed for reproducible sampling (default: random based on timestamp)",
     )
     parser.add_argument(
         "--note-status",

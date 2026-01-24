@@ -12,6 +12,7 @@ import json
 import time
 import sys
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Add project root to path
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class VideoDownloader:
     def __init__(
-        self, data_dir="data", force=False, random_sample=False, random_seed=42
+        self, data_dir="data", force=False, random_sample=False, random_seed=None
     ):
         self.data_dir = Path(data_dir)
         self.filtered_dir = self.data_dir / "filtered"
@@ -48,7 +49,7 @@ class VideoDownloader:
         self.videos_dir.mkdir(parents=True, exist_ok=True)
         self.force = force  # Force re-download even if already downloaded
         self.random_sample = random_sample  # Enable random sampling
-        self.random_seed = random_seed  # Seed for reproducibility
+        self.random_seed = random_seed if random_seed is not None else int(datetime.now().timestamp() * 1000) % 2**32  # Seed for reproducibility
 
         # Create metadata file
         self.metadata = []
@@ -363,8 +364,8 @@ def main():
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,
-        help="Random seed for reproducible sampling (default: 42)",
+        default=None,
+        help="Random seed for reproducible sampling (default: random based on timestamp)",
     )
     args = parser.parse_args()
 
