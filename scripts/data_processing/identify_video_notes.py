@@ -28,12 +28,13 @@ logger = logging.getLogger(__name__)
 
 
 class VideoNoteIdentifier:
-    def __init__(self, data_dir="data", force=False):
+    def __init__(self, data_dir="data", force=False, tweet_ids=None):
         self.data_dir = Path(data_dir)
         self.filtered_dir = self.data_dir / "filtered"
         self.temp_dir = self.data_dir / "temp_metadata"
         self.temp_dir.mkdir(exist_ok=True)
         self.force = force  # Force re-check even if already in database
+        self.tweet_ids = tweet_ids  # Optional: specific tweet IDs to process
         
     def check_ytdlp(self):
         """Check if yt-dlp is installed."""
@@ -264,9 +265,16 @@ class VideoNoteIdentifier:
         with get_session() as session:
             # Load media notes from database
             logger.info("\nQuerying media notes from database...")
-            media_notes_query = (
-                session.query(Note).filter(Note.is_media_note == True).all()
-            )
+            
+            # Base query for media notes
+            query = session.query(Note).filter(Note.is_media_note == True)
+            
+            # Filter by specific tweet IDs if provided
+            if self.tweet_ids:
+                query = query.filter(Note.tweet_id.in_(self.tweet_ids))
+                logger.info(f"Filtering for {len(self.tweet_ids)} specific tweet IDs")
+            
+            media_notes_query = query.all()
             logger.info(f"Found {len(media_notes_query)} media notes in database")
 
             # Get tweet IDs that already have media_metadata (unless force mode)
@@ -308,9 +316,9 @@ class VideoNoteIdentifier:
         # Convert to DataFrame for processing
         df = pd.DataFrame(media_notes_data)
             
-            if sample_size:
-                df = df.head(sample_size)
-                logger.info(f"Limited to first {sample_size} notes for testing")
+        if sample_size:
+            df = df.head(sample_size)
+            logger.info(f"Limited to first {sample_size} notes for testing")
                 
         # Identify videos and save to database
         # Note: Session is NOT passed - each worker creates its own thread-safe session
@@ -334,9 +342,9 @@ class VideoNoteIdentifier:
         logger.info(f"Total media notes checked: {len(df)}")
         logger.info(f"Actual videos found: {len(video_notes)}")
         if len(df) > 0:
-        logger.info(f"Percentage: {len(video_notes)/len(df)*100:.1f}%")
+            logger.info(f"Percentage: {len(video_notes)/len(df)*100:.1f}%")
         if len(video_notes) > 0:
-        logger.info(f"Unique video tweets: {video_notes['tweetId'].nunique()}")
+            logger.info(f"Unique video tweets: {video_notes['tweetId'].nunique()}")
             logger.info("\nAll video metadata saved to database (media_metadata table)")
         
         # Optional: Save results to CSV for reference
@@ -395,9 +403,27 @@ def main():
         action="store_true",
         help="Force re-process all media notes, even if already in database",
     )
+    parser.add_argument(
+        "--tweet-ids-file",
+        type=str,
+        default=None,
+        help="Path to file with tweet IDs to process (one per line)",
+    )
     args = parser.parse_args()
     
-    identifier = VideoNoteIdentifier(data_dir="data", force=args.force)
+    # Load tweet IDs from file if provided
+    tweet_ids = None
+    if args.tweet_ids_file:
+        tweet_ids_file = Path(args.tweet_ids_file)
+        if tweet_ids_file.exists():
+            with open(tweet_ids_file, 'r') as f:
+                tweet_ids = [int(line.strip()) for line in f if line.strip()]
+            logger.info(f"Loaded {len(tweet_ids)} tweet IDs from {tweet_ids_file}")
+        else:
+            logger.error(f"Tweet IDs file not found: {tweet_ids_file}")
+            sys.exit(1)
+    
+    identifier = VideoNoteIdentifier(data_dir="data", force=args.force, tweet_ids=tweet_ids)
     result = identifier.run(sample_size=args.sample)
     
     if result is not None and len(result) > 0:

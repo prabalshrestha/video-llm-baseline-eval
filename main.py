@@ -52,14 +52,22 @@ class VideoLLMCLI:
         args = ["--sample", str(sample)] if sample else []
         return self.run_script("scripts/data_processing/identify_video_notes.py", args)
 
-    def videos(self, limit=30):
+    def videos(self, limit=30, random_sample=False, seed=42):
         """Download videos."""
         args = ["--limit", str(limit)]
+        if random_sample:
+            args.append("--random")
+            args.extend(["--seed", str(seed)])
         return self.run_script("scripts/data_processing/download_videos.py", args)
 
-    def dataset(self, use_api=True):
+    def dataset(self, use_api=True, sample_size=None, seed=42):
         """Create complete evaluation dataset."""
-        args = ["--no-api"] if not use_api else []
+        args = []
+        if not use_api:
+            args.append("--no-api")
+        if sample_size:
+            args.extend(["--sample-size", str(sample_size)])
+            args.extend(["--random-seed", str(seed)])
         return self.run_script("scripts/data_processing/create_dataset.py", args)
 
     def evaluate(self, models="gemini,gpt4o", limit=None):
@@ -69,17 +77,20 @@ class VideoLLMCLI:
             args.extend(["--limit", str(limit)])
         return self.run_script("scripts/evaluation/evaluate_models.py", args)
 
-    def pipeline(self, video_limit=30, use_api=True):
+    def pipeline(self, video_limit=30, use_api=True, random_sample=False, seed=42):
         """Run the complete data collection pipeline."""
         print("\n" + "=" * 70)
         print("VIDEO LLM BASELINE EVALUATION - FULL PIPELINE")
         print("=" * 70)
-        print(f"\nThis will run the complete pipeline with {video_limit} videos.\n")
+        print(f"\nThis will run the complete pipeline with {video_limit} videos.")
+        if random_sample:
+            print(f"Random sampling enabled (seed: {seed})")
+        print()
 
         steps = [
             ("Download Community Notes", self.download),
             ("Filter for Videos", self.filter),
-            ("Download Videos", lambda: self.videos(video_limit)),
+            ("Download Videos", lambda: self.videos(video_limit, random_sample, seed)),
             ("Create Dataset", lambda: self.dataset(use_api)),
         ]
 
@@ -106,6 +117,15 @@ class VideoLLMCLI:
     def explore(self):
         """Explore the data."""
         return self.run_script("scripts/data_processing/explore_notes.py")
+    
+    def random_sample(self, limit=30, seed=None, status="CURRENTLY_RATED_HELPFUL"):
+        """Random sample notes by status, download videos, and create dataset."""
+        args = ["--limit", str(limit)]
+        if seed is not None:
+            args.extend(["--seed", str(seed)])
+        if status:
+            args.extend(["--status", status])
+        return self.run_script("scripts/data_processing/random_sample_pipeline.py", args)
 
     def test(self):
         """Test environment setup."""
@@ -167,10 +187,43 @@ Available Commands:
   python main.py dataset                     Create evaluation dataset ⭐
   python main.py evaluate [OPTIONS]          Evaluate Video LLMs 🎯
   python main.py pipeline [--limit N]        Run full pipeline (default: 30 videos)
+  python main.py random [--limit N]          🎲 Random sample helpful notes + videos 🎲
   python main.py explore                     Explore collected data
   python main.py test                        Test environment setup
   python main.py status                      Show data summary
   python main.py help                        Show this help
+
+Random Sampling Options (ALL COMMANDS):
+
+  --random              Enable random sampling for video selection
+  --seed N              Random seed for reproducibility (default: 42)
+  --sample-size N       Sample size for dataset creation
+  
+  Works with: pipeline, videos, dataset, random commands
+  
+  Examples:
+    python main.py pipeline --limit 50 --random --seed 42
+    python main.py videos --limit 30 --random
+    python main.py dataset --sample-size 100 --seed 42
+
+Random Sample Command (Quick Start):
+
+  python main.py random [--limit N] [--seed S] [--status STATUS]
+  
+  Randomly samples tweets with notes of specified status, downloads videos,
+  and creates evaluation dataset. Maximum randomness for diverse sampling!
+  
+  Options:
+    --limit N     Number of videos to download (default: 30)
+    --seed S      Random seed for reproducibility (default: 42)
+    --status STR  Note status filter (default: CURRENTLY_RATED_HELPFUL)
+                  Other options: CURRENTLY_RATED_NOT_HELPFUL, NEEDS_MORE_RATINGS
+  
+  Examples:
+    python main.py random --limit 50                           # 50 helpful videos
+    python main.py random --limit 30 --seed 42                 # Reproducible
+    python main.py random --limit 20 --status NEEDS_MORE_RATINGS  # Unrated notes
+    python main.py random --limit 40 --status CURRENTLY_RATED_NOT_HELPFUL  # Not helpful
 
 Evaluation Options:
 
@@ -179,8 +232,20 @@ Evaluation Options:
 
 Examples:
 
-  # Quick start - run everything
-  python main.py pipeline
+  # Quick start - random sample 30 helpful videos
+  python main.py random --limit 30
+
+  # Run complete pipeline with random sampling
+  python main.py pipeline --limit 50 --random --seed 42
+
+  # Run pipeline without random sampling (sequential)
+  python main.py pipeline --limit 30
+
+  # Download videos with random sampling
+  python main.py videos --limit 30 --random --seed 123
+
+  # Create dataset with random sampling
+  python main.py dataset --sample-size 100 --seed 42
 
   # Test video identification with sample
   python main.py filter --sample 100
@@ -206,10 +271,10 @@ Examples:
   # Check what you have
   python main.py status
 
-  # Step by step workflow
+  # Step by step workflow with random sampling
   python main.py download
   python main.py filter
-  python main.py videos --limit 30
+  python main.py videos --limit 30 --random --seed 42
   python main.py dataset
   python main.py evaluate
 
@@ -244,6 +309,7 @@ def main():
             "dataset",
             "evaluate",
             "pipeline",
+            "random",
             "explore",
             "test",
             "status",
@@ -270,6 +336,33 @@ def main():
         default="gemini,gpt4o",
         help="Models to evaluate (comma-separated: gemini, gpt4o)",
     )
+    
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility (default: 42)",
+    )
+    
+    parser.add_argument(
+        "--random",
+        action="store_true",
+        help="Enable random sampling for videos (pipeline/videos commands)",
+    )
+    
+    parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=None,
+        help="Sample size for dataset creation (dataset command)",
+    )
+    
+    parser.add_argument(
+        "--status",
+        type=str,
+        default="CURRENTLY_RATED_HELPFUL",
+        help="Note status filter for random command (default: CURRENTLY_RATED_HELPFUL)",
+    )
 
     args = parser.parse_args()
 
@@ -279,10 +372,11 @@ def main():
     commands = {
         "download": cli.download,
         "filter": lambda: cli.filter(args.sample),
-        "videos": lambda: cli.videos(args.limit),
-        "dataset": cli.dataset,
+        "videos": lambda: cli.videos(args.limit, args.random, args.seed),
+        "dataset": lambda: cli.dataset(sample_size=args.sample_size, seed=args.seed),
         "evaluate": lambda: cli.evaluate(args.models, args.limit),
-        "pipeline": cli.pipeline,
+        "pipeline": lambda: cli.pipeline(args.limit, random_sample=args.random, seed=args.seed),
+        "random": lambda: cli.random_sample(args.limit, args.seed, args.status),
         "explore": cli.explore,
         "test": cli.test,
         "status": cli.show_results,

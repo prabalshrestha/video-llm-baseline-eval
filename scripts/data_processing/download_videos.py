@@ -144,7 +144,7 @@ class VideoDownloader:
         tweet_id = media_metadata.tweet_id
         video_index = media_metadata.video_index
         url = f"https://twitter.com/i/status/{tweet_id}"
-        
+
         # New naming convention: TWEETID_INDEX.ext (e.g., 1234567890_1.mp4)
         output_template = str(self.videos_dir / f"{tweet_id}_{video_index}.%(ext)s")
 

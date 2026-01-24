@@ -15,7 +15,10 @@ cp env.template .env
 # 3. Set up database
 python setup_database.py
 
-# 4. Run everything (ONE command!)
+# 4. Quick random sample (RECOMMENDED for quick start!)
+python main.py random --limit 30
+
+# Or run full pipeline
 python main.py pipeline
 
 # Or step by step
@@ -161,15 +164,23 @@ video-llm-baseline-eval/
 All commands use `main.py`:
 
 ```bash
-# Full pipeline (recommended)
-python main.py pipeline              # Run all steps
+# Quick random sample (RECOMMENDED) 🎲
+python main.py random --limit 30        # Random sample helpful videos
+python main.py random --limit 50 --seed 42  # Reproducible sampling
+
+# Full pipeline
+python main.py pipeline                 # Run all steps (sequential)
+python main.py pipeline --random        # Run with random video sampling
+python main.py pipeline --limit 50 --random --seed 42  # Custom config
 
 # Individual steps
-python main.py download              # Download Community Notes
-python main.py filter                # Filter for videos
-python main.py videos --limit 30     # Download videos
-python main.py dataset               # Create evaluation dataset ⭐
-python main.py evaluate              # Evaluate Video LLMs 🎯
+python main.py download                 # Download Community Notes
+python main.py filter                   # Filter for videos
+python main.py videos --limit 30        # Download videos (sequential)
+python main.py videos --limit 30 --random --seed 42  # Random sampling
+python main.py dataset                  # Create evaluation dataset
+python main.py dataset --sample-size 100 --seed 42   # With sampling
+python main.py evaluate                 # Evaluate Video LLMs
 
 # Evaluation options
 python main.py evaluate --models gemini,gpt4o    # Both models
@@ -177,13 +188,86 @@ python main.py evaluate --models gemini --limit 5  # Gemini only, 5 samples
 python main.py evaluate --models gpt4o --limit 3   # GPT-4o only, 3 samples
 
 # Utilities
-python main.py status                # Show data summary
-python main.py explore               # Explore data
-python main.py test                  # Test setup
-python main.py help                  # Show all commands
+python main.py status                   # Show data summary
+python main.py explore                  # Explore data
+python main.py test                     # Test setup
+python main.py help                     # Show all commands
 ```
 
 **Note:** `dataset` command automatically uses Twitter API if credentials are in `.env`
+
+## Random Sample Command (Quick Start)
+
+The `random` command is the **fastest way** to create a diverse evaluation dataset:
+
+```bash
+# Sample 30 random videos from CURRENTLY_RATED_HELPFUL notes (default)
+python main.py random --limit 30
+
+# Sample 50 videos with reproducible seed
+python main.py random --limit 50 --seed 42
+
+# Sample from different note statuses
+python main.py random --limit 20 --status NEEDS_MORE_RATINGS
+python main.py random --limit 40 --status CURRENTLY_RATED_NOT_HELPFUL
+```
+
+**What it does:**
+
+1. Randomly samples tweets with notes of specified status (default: `CURRENTLY_RATED_HELPFUL`)
+2. Identifies which tweets contain videos using yt-dlp metadata
+3. Downloads the videos
+4. Creates the evaluation dataset
+
+**Available Note Statuses:**
+
+- `CURRENTLY_RATED_HELPFUL` - Notes marked as helpful (default)
+- `CURRENTLY_RATED_NOT_HELPFUL` - Notes marked as not helpful
+- `NEEDS_MORE_RATINGS` - Notes awaiting more ratings
+
+**Benefits:**
+
+- ✅ Maximum randomness using consistent random sampling
+- ✅ Filter by note status for targeted datasets
+- ✅ Much faster than processing all 122K media notes
+- ✅ Reproducible with seed parameter
+- ✅ All-in-one command - no manual steps needed
+
+## Random Sampling in Pipeline
+
+You can also enable random sampling in the main pipeline:
+
+```bash
+# Pipeline with random video sampling
+python main.py pipeline --limit 50 --random --seed 42
+
+# Pipeline without random sampling (sequential)
+python main.py pipeline --limit 30
+```
+
+**Random Sampling Options (available in all commands):**
+
+- `--random`: Enable random video sampling
+- `--seed N`: Set random seed (default: 42)
+- `--sample-size N`: Sample size for dataset creation
+
+**Example workflows:**
+
+```bash
+# Full pipeline with random sampling
+python main.py pipeline --limit 50 --random --seed 123
+
+# Individual steps with random sampling
+python main.py videos --limit 30 --random --seed 42
+python main.py dataset --sample-size 100 --seed 42
+python main.py evaluate
+
+# Mix sequential and random
+python main.py download
+python main.py filter
+python main.py videos --limit 50 --random  # Random videos
+python main.py dataset                      # All downloaded videos
+```
 
 ## Data Models
 
@@ -424,6 +508,7 @@ Without API: The system falls back to video metadata (limited info).
 ## Key Commands
 
 ```bash
+python main.py random       # 🎲 Quick random sample (RECOMMENDED)
 python main.py pipeline     # Run complete data collection
 python main.py dataset      # Create evaluation dataset
 python main.py evaluate     # Evaluate Video LLMs
@@ -431,7 +516,10 @@ python main.py status       # Check data status
 python main.py help         # Show all commands
 ```
 
-**Complete Workflow:** `download` → `filter` → `videos` → `dataset` → `evaluate`
+**Quick Workflows:**
+
+1. **Fast Start (Recommended):** `python main.py random --limit 30` → `python main.py evaluate`
+2. **Complete Pipeline:** `download` → `filter` → `videos` → `dataset` → `evaluate`
 
 ## License
 
