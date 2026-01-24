@@ -133,9 +133,12 @@ class RandomSamplePipeline:
             if temp_file.exists():
                 temp_file.unlink()
     
-    def download_videos(self):
+    def download_videos(self, tweet_ids):
         """
         Download videos using the existing download_videos script.
+        
+        Args:
+            tweet_ids: List of tweet IDs to download videos from
         
         Returns:
             True if successful, False otherwise
@@ -144,12 +147,23 @@ class RandomSamplePipeline:
         logger.info("Step 3: Downloading Videos")
         logger.info("="*70)
         
+        # Save tweet_ids to temporary file for download_videos.py
+        temp_file = Path("data/temp_download_tweets.txt")
+        temp_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(temp_file, "w") as f:
+            for tweet_id in tweet_ids:
+                f.write(f"{tweet_id}\n")
+        
+        logger.info(f"Downloading videos from {len(tweet_ids)} pre-filtered tweets")
+        
         cmd = [
             sys.executable,
             "scripts/data_processing/download_videos.py",
             "--limit", str(self.limit),
             "--random",
-            "--seed", str(self.seed)
+            "--seed", str(self.seed),
+            "--tweet-ids-file", str(temp_file)
         ]
         
         if self.force:
@@ -162,6 +176,10 @@ class RandomSamplePipeline:
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to download videos: {e}")
             return False
+        finally:
+            # Clean up temp file
+            if temp_file.exists():
+                temp_file.unlink()
     
     def create_dataset(self):
         """
@@ -218,8 +236,8 @@ class RandomSamplePipeline:
             logger.error("No video tweets found!")
             return False
         
-        # Step 3: Download videos
-        if not self.download_videos():
+        # Step 3: Download videos (pass tweet_ids to maintain filtering)
+        if not self.download_videos(tweet_ids):
             logger.error("Video download failed!")
             return False
         

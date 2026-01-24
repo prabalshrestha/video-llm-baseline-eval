@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class VideoDownloader:
     def __init__(
-        self, data_dir="data", force=False, random_sample=False, random_seed=None
+        self, data_dir="data", force=False, random_sample=False, random_seed=None, tweet_ids=None
     ):
         self.data_dir = Path(data_dir)
         self.filtered_dir = self.data_dir / "filtered"
@@ -50,6 +50,7 @@ class VideoDownloader:
         self.force = force  # Force re-download even if already downloaded
         self.random_sample = random_sample  # Enable random sampling
         self.random_seed = random_seed if random_seed is not None else int(datetime.now().timestamp() * 1000) % 2**32  # Seed for reproducibility
+        self.tweet_ids = tweet_ids  # Optional list of tweet_ids to filter by
 
         # Create metadata file
         self.metadata = []
@@ -90,6 +91,11 @@ class VideoDownloader:
             query = session.query(MediaMetadata).filter(
                 MediaMetadata.media_type == "video"
             )
+            
+            # Filter by tweet_ids if provided (for random sampling pipeline)
+            if self.tweet_ids:
+                query = query.filter(MediaMetadata.tweet_id.in_(self.tweet_ids))
+                logger.info(f"Filtering by {len(self.tweet_ids)} pre-selected tweet IDs")
 
             # Filter out already-downloaded videos (unless force mode)
             if not self.force:
@@ -367,13 +373,32 @@ def main():
         default=None,
         help="Random seed for reproducible sampling (default: random based on timestamp)",
     )
+    parser.add_argument(
+        "--tweet-ids-file",
+        type=str,
+        default=None,
+        help="File containing tweet IDs to filter by (one per line)",
+    )
     args = parser.parse_args()
+    
+    # Load tweet IDs if provided
+    tweet_ids = None
+    if args.tweet_ids_file:
+        tweet_ids_file = Path(args.tweet_ids_file)
+        if tweet_ids_file.exists():
+            with open(tweet_ids_file, "r") as f:
+                tweet_ids = [line.strip() for line in f if line.strip()]
+            logger.info(f"Loaded {len(tweet_ids)} tweet IDs from {args.tweet_ids_file}")
+        else:
+            logger.error(f"Tweet IDs file not found: {args.tweet_ids_file}")
+            sys.exit(1)
 
     downloader = VideoDownloader(
         data_dir="data",
         force=args.force,
         random_sample=args.random,
         random_seed=args.seed,
+        tweet_ids=tweet_ids,
     )
     result = downloader.run(limit=args.limit)
 
