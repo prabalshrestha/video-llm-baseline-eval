@@ -107,14 +107,25 @@ class VideoNoteIdentifier:
                                 # Create thread-local session
                                 with get_session() as thread_session:
                                     # Check if already exists
+                                    # Query for existing entry by tweet_id and video_index
+                                    # For single video tweets, video_index defaults to 1
+                                    video_index = 1
                                     existing = (
                                         thread_session.query(MediaMetadata)
-                                        .filter(MediaMetadata.tweet_id == tweet_id)
+                                        .filter(
+                                            MediaMetadata.tweet_id == tweet_id,
+                                            MediaMetadata.video_index == video_index
+                                        )
                                         .first()
                                     )
+                                    
+                                    # Generate media_key: {tweet_id}_{video_index}
+                                    media_key = f"{tweet_id}_{video_index}"
 
                                     media_data = {
+                                        "media_key": media_key,
                                         "tweet_id": tweet_id,
+                                        "video_index": video_index,
                                         "media_id": str(info.get("id", "")),
                                         "media_type": media_type,
                                         "title": info.get("title"),
@@ -136,7 +147,7 @@ class VideoNoteIdentifier:
                                     if existing:
                                         # Update existing
                                         for key, value in media_data.items():
-                                            if key != "tweet_id":
+                                            if key not in ["tweet_id", "media_key", "video_index"]:
                                                 setattr(existing, key, value)
                                     else:
                                         # Create new

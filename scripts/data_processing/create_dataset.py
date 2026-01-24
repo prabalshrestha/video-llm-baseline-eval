@@ -133,22 +133,19 @@ class DatasetCreator:
         """
         # Query unique tweets that have:
         # 1. Downloaded videos (local_path is set)
-        # 2. Twitter API data (required for filtering)
-        # 3. At least one note
-        # 4. Use only first video (video_index=1) for tweets with multiple videos
+        # 2. At least one note
+        # 3. Use only first video (video_index=1) for tweets with multiple videos
+        # Note: API data filter removed - now fetched in pipeline step 1.5
         query = (
             session.query(Tweet, MediaMetadata)
             .join(MediaMetadata, Tweet.tweet_id == MediaMetadata.tweet_id)
             .filter(MediaMetadata.local_path.isnot(None))
             .filter(MediaMetadata.media_type == "video")
             .filter(MediaMetadata.video_index == 1)  # Only first video per tweet
-            .filter(Tweet.raw_api_data.isnot(None))  # Always require API data now
         )
 
         tweet_media_pairs = query.all()
-        logger.info(
-            f"Found {len(tweet_media_pairs)} tweets with downloaded videos and API data"
-        )
+        logger.info(f"Found {len(tweet_media_pairs)} tweets with downloaded videos")
 
         # Filter for original English tweets
         filtered_tweets = []
@@ -157,6 +154,7 @@ class DatasetCreator:
             "not_original": 0,
             "not_english": 0,
             "no_file": 0,
+            "no_api_data": 0,
         }
 
         for tweet, media in tweet_media_pairs:
@@ -164,6 +162,11 @@ class DatasetCreator:
             if not Path(media.local_path).exists():
                 logger.warning(f"Video file not found: {media.local_path}")
                 stats["no_file"] += 1
+                continue
+
+            # Skip tweets without API data (will be logged as warning)
+            if not tweet.raw_api_data:
+                stats["no_api_data"] += 1
                 continue
 
             # Check if original tweet (not retweet or reply)
@@ -183,6 +186,10 @@ class DatasetCreator:
         logger.info(f"  ✗ Filtered out {stats['not_original']} retweets/replies")
         logger.info(f"  ✗ Filtered out {stats['not_english']} non-English tweets")
         logger.info(f"  ✗ Skipped {stats['no_file']} missing video files")
+        if stats["no_api_data"] > 0:
+            logger.warning(
+                f"  ✗ Skipped {stats['no_api_data']} tweets without API data"
+            )
 
         # Now fetch all notes for these tweets
         tweet_ids = [tweet.tweet_id for tweet, _ in filtered_tweets]
