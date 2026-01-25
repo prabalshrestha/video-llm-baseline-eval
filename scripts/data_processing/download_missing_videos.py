@@ -45,6 +45,7 @@ def find_tweets_with_missing_videos(session, note_status=None):
         .filter(Tweet.raw_api_data.isnot(None))
         .filter(MediaMetadata.media_type == "video")
         .filter(MediaMetadata.local_path.is_(None))
+        .filter(Tweet.raw_api_data["referenced_tweets"].astext.is_(None))
         .distinct()
     )
 
@@ -67,7 +68,7 @@ def find_tweets_without_media_metadata(session, note_status=None):
     Returns:
         List of tweet IDs
     """
-    from sqlalchemy import and_, exists
+    from sqlalchemy import exists
 
     # Subquery to check if tweet has any media_metadata
     has_media_metadata = exists().where(MediaMetadata.tweet_id == Tweet.tweet_id)
@@ -80,6 +81,7 @@ def find_tweets_without_media_metadata(session, note_status=None):
         session.query(Tweet.tweet_id)
         .join(Note, Tweet.tweet_id == Note.tweet_id)
         .filter(Tweet.raw_api_data.isnot(None))
+        .filter(Tweet.raw_api_data["referenced_tweets"].astext.is_(None))
         .filter(~has_media_metadata)
         .distinct()
     )
@@ -89,6 +91,46 @@ def find_tweets_without_media_metadata(session, note_status=None):
 
     tweet_ids = [row.tweet_id for row in query.all()]
     return tweet_ids
+
+
+def _extract_tweet_payload(api_data: dict, tweet_id: int) -> dict:
+    if not isinstance(api_data, dict):
+        return {}
+
+    # Direct fields present on stored tweet_data
+    if "attachments" in api_data or "referenced_tweets" in api_data:
+        return api_data
+
+    data = api_data.get("data")
+    if isinstance(data, dict):
+        return data
+    if isinstance(data, list):
+        for item in data:
+            if str(item.get("id")) == str(tweet_id):
+                return item
+
+    raw_response = api_data.get("raw_response")
+    if isinstance(raw_response, dict):
+        data = raw_response.get("data")
+        if isinstance(data, dict):
+            return data
+        if isinstance(data, list):
+            for item in data:
+                if str(item.get("id")) == str(tweet_id):
+                    return item
+
+    return {}
+
+
+def _extract_includes_media(api_data: dict) -> list:
+    if not isinstance(api_data, dict):
+        return []
+
+    raw_response = api_data.get("raw_response")
+    if isinstance(raw_response, dict):
+        return raw_response.get("includes", {}).get("media", []) or []
+
+    return api_data.get("includes", {}).get("media", []) or []
 
 
 def extract_video_info_from_api_data(session: Session, tweet_ids: list) -> int:
@@ -112,27 +154,33 @@ def extract_video_info_from_api_data(session: Session, tweet_ids: list) -> int:
 
         api_data = tweet.raw_api_data
 
-        # Check if tweet has video attachments
-        if "attachments" not in api_data:
+        tweet_payload = _extract_tweet_payload(api_data, tweet_id)
+        if not tweet_payload:
             continue
 
-        media_keys = api_data["attachments"].get("media_keys", [])
+        attachments = tweet_payload.get("attachments", {})
+        media_keys = attachments.get("media_keys", []) if attachments else []
         if not media_keys:
             continue
 
-        # Get includes.media information
-        includes = api_data.get("includes", {})
-        media_list = includes.get("media", [])
+        media_list = _extract_includes_media(api_data)
 
         if not media_list:
             continue
 
-        # Process each media item
-        for video_index, media in enumerate(media_list, 1):
+        media_by_key = {
+            media.get("media_key"): media
+            for media in media_list
+            if isinstance(media, dict)
+        }
+
+        video_index = 1
+        for media_key in media_keys:
+            media = media_by_key.get(media_key)
+            if not media:
+                continue
             if media.get("type") != "video":
                 continue
-
-            media_key_from_api = media.get("media_key")
 
             # Create composite media_key
             media_key = f"{tweet_id}_{video_index}"
@@ -170,6 +218,7 @@ def extract_video_info_from_api_data(session: Session, tweet_ids: list) -> int:
             logger.info(
                 f"Created media_metadata for tweet {tweet_id} (index {video_index})"
             )
+            video_index += 1
 
     session.commit()
     return created_count
