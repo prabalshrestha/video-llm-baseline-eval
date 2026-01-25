@@ -48,6 +48,7 @@ class RandomSamplePipeline:
         )
         self.force = force
         self.status = status  # Note status filter
+        self.video_tweet_ids = []  # Store the final video tweet IDs for dataset creation
         logger.info(f"Random seed: {self.seed}")
         logger.info(f"Note status filter: {self.status}")
 
@@ -241,6 +242,7 @@ class RandomSamplePipeline:
     def create_dataset(self):
         """
         Create evaluation dataset using the existing create_dataset script.
+        Now uses only the video tweet IDs from this pipeline run.
         Passes the status filter to only include matching notes.
 
         Returns:
@@ -250,11 +252,23 @@ class RandomSamplePipeline:
         logger.info("Step 5: Creating Evaluation Dataset")
         logger.info("=" * 70)
 
+        # Create a temporary file with the video tweet IDs
+        temp_ids_file = Path("data/temp_pipeline_tweet_ids.txt")
+        temp_ids_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(temp_ids_file, "w") as f:
+            for tweet_id in self.video_tweet_ids:
+                f.write(f"{tweet_id}\n")
+
+        logger.info(f"Creating dataset with {len(self.video_tweet_ids)} video tweets")
+
         cmd = [
             sys.executable,
             "scripts/data_processing/create_dataset.py",
             "--note-status",
             self.status,
+            "--tweet-ids-file",
+            str(temp_ids_file),
         ]
 
         if self.force:
@@ -263,9 +277,14 @@ class RandomSamplePipeline:
         try:
             subprocess.run(cmd, check=True)
             logger.info(f"✓ Dataset created successfully")
+            
+            # Clean up temp file
+            temp_ids_file.unlink(missing_ok=True)
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to create dataset: {e}")
+            # Clean up temp file even on error
+            temp_ids_file.unlink(missing_ok=True)
             return False
 
     def run(self):
@@ -327,6 +346,9 @@ class RandomSamplePipeline:
         if not video_tweet_ids:
             logger.error("Failed to find any video tweets!")
             return False
+
+        # Store for use in create_dataset()
+        self.video_tweet_ids = video_tweet_ids
 
         logger.info(
             f"\n✓ Collected {len(video_tweet_ids)} video tweets after {attempts} attempts"

@@ -37,6 +37,7 @@ class DatasetCreator:
         random_seed: int = None,
         api_data_only: bool = False,
         note_status_filter: str = None,
+        tweet_ids: List[str] = None,
     ):
         self.data_dir = Path(data_dir)
         self.output_dir = self.data_dir / "evaluation"
@@ -50,6 +51,7 @@ class DatasetCreator:
         )  # For reproducible sampling
         self.api_data_only = api_data_only  # Only include tweets with existing API data
         self.note_status_filter = note_status_filter  # Filter notes by status
+        self.tweet_ids = tweet_ids  # Optional: specific tweet IDs to include
 
         self.twitter = TwitterService(force=force_api_fetch)
 
@@ -143,6 +145,11 @@ class DatasetCreator:
             .filter(MediaMetadata.media_type == "video")
             .filter(MediaMetadata.video_index == 1)  # Only first video per tweet
         )
+
+        # Filter by specific tweet IDs if provided
+        if self.tweet_ids:
+            query = query.filter(Tweet.tweet_id.in_(self.tweet_ids))
+            logger.info(f"Filtering to {len(self.tweet_ids)} specific tweet IDs")
 
         tweet_media_pairs = query.all()
         logger.info(f"Found {len(tweet_media_pairs)} tweets with downloaded videos")
@@ -674,13 +681,32 @@ def main():
         default=None,
         help="Filter notes by status (e.g., CURRENTLY_RATED_HELPFUL, CURRENTLY_RATED_NOT_HELPFUL, NEEDS_MORE_RATINGS)",
     )
+    parser.add_argument(
+        "--tweet-ids-file",
+        type=str,
+        default=None,
+        help="Path to file containing tweet IDs to include (one per line)",
+    )
     args = parser.parse_args()
+
+    # Load tweet IDs from file if provided
+    tweet_ids = None
+    if args.tweet_ids_file:
+        tweet_ids_path = Path(args.tweet_ids_file)
+        if tweet_ids_path.exists():
+            with open(tweet_ids_path, "r") as f:
+                tweet_ids = [line.strip() for line in f if line.strip()]
+            logger.info(f"Loaded {len(tweet_ids)} tweet IDs from {args.tweet_ids_file}")
+        else:
+            logger.error(f"Tweet IDs file not found: {args.tweet_ids_file}")
+            sys.exit(1)
 
     creator = DatasetCreator(
         force_api_fetch=args.force_api_fetch,
         sample_size=args.sample_size,
         random_seed=args.random_seed,
         note_status_filter=args.note_status,
+        tweet_ids=tweet_ids,
     )
     success = creator.run(use_api=not args.no_api)
 
