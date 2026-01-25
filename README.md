@@ -198,11 +198,11 @@ python main.py help                     # Show all commands
 
 ## Random Sample Command (Quick Start)
 
-The `random` command is the **fastest way** to create a diverse evaluation dataset:
+The `random` command is the **fastest way** to create a diverse evaluation dataset while respecting Twitter API rate limits:
 
 ```bash
-# Sample 30 random videos from CURRENTLY_RATED_HELPFUL notes (default)
-python main.py random --limit 30
+# Sample 100 video tweets from CURRENTLY_RATED_HELPFUL notes (default)
+python main.py random --limit 100
 
 # Sample 50 videos with reproducible seed
 python main.py random --limit 50 --seed 12345
@@ -212,14 +212,30 @@ python main.py random --limit 20 --status NEEDS_MORE_RATINGS
 python main.py random --limit 40 --status CURRENTLY_RATED_NOT_HELPFUL
 ```
 
-**What it does:**
+**NEW Workflow (API-Efficient):**
 
-1. Randomly samples tweets with notes of specified status (default: `CURRENTLY_RATED_HELPFUL`)
-2. Identifies which tweets contain videos using yt-dlp metadata
-3. Downloads the videos
-4. Creates the evaluation dataset **with only the matching notes**
+1. **Sample tweets WITHOUT existing API data** (need fresh ones only)
+2. **Check metadata** to identify which have videos using yt-dlp (NO API calls yet!)
+3. **Resample if needed** until we have the target number of video tweets
+4. **Download the videos** from confirmed video tweets
+5. **Call Twitter API** for those tweets (~N API calls for --limit N)
+6. **Create dataset** (original/English filtering happens here, some may filter out)
 
-**Key Feature:** If you request 100 videos with `--limit 100`, you'll get close to 100 tweets where each tweet has at least one note with the specified status, and the dataset will ONLY include notes matching that status.
+**Key Features:**
+
+- ✅ **API Efficient:** `--limit 100` makes ~100 API calls, not 200+
+- ✅ **Fresh Data Only:** Only samples tweets without existing API data
+- ✅ **Guaranteed Videos:** Metadata check confirms videos before API calls
+- ✅ **Smart Resampling:** Automatically resamples until target video count met
+- ✅ **Filtering After:** Original/English filtering happens at end (some attrition is expected)
+
+**Expected Results:**
+
+If you run `python main.py random --limit 100`:
+- Samples and identifies ~100 tweets with videos
+- Makes ~100 Twitter API calls
+- Final dataset may have ~70-80 tweets (some filtered for being RT/reply or non-English)
+- This is expected and acceptable to stay within API rate limits
 
 **Available Note Statuses:**
 
@@ -227,14 +243,7 @@ python main.py random --limit 40 --status CURRENTLY_RATED_NOT_HELPFUL
 - `CURRENTLY_RATED_NOT_HELPFUL` - Notes marked as not helpful
 - `NEEDS_MORE_RATINGS` - Notes awaiting more ratings
 
-**Benefits:**
-
-- ✅ Maximum randomness using consistent random sampling
-- ✅ Filter by note status for targeted datasets
-- ✅ Only includes notes matching the filter (no extra notes)
-- ✅ Much faster than processing all 122K media notes
-- ✅ Reproducible with seed parameter
-- ✅ API rate limit friendly - gets ~N tweets for --limit N
+See `RANDOM_PIPELINE_WORKFLOW.md` for detailed workflow documentation.
 
 ## Random Sampling in Pipeline
 

@@ -1,11 +1,18 @@
 """
 Random Sample Pipeline - Quick Dataset Creation
 
-Randomly samples tweets with CURRENTLY_RATED_HELPFUL notes, downloads videos,
-and creates evaluation dataset. Maximum randomness for diverse sampling.
+Randomly samples tweets with notes by status, identifies which have videos,
+downloads videos, then fetches API data and creates evaluation dataset.
+
+NEW WORKFLOW (to respect API rate limits):
+1. Sample tweets WITHOUT existing API data (need fresh ones)
+2. Check metadata to identify which have videos (resample until target met)
+3. Download the videos
+4. Call API for those tweets
+5. Create dataset (original/English filtering happens here, some may be filtered out)
 
 Usage:
-    python scripts/data_processing/random_sample_pipeline.py --limit 30
+    python scripts/data_processing/random_sample_pipeline.py --limit 100
     python scripts/data_processing/random_sample_pipeline.py --limit 50 --seed 42
     python scripts/data_processing/random_sample_pipeline.py --limit 100 --force
 """
@@ -44,10 +51,13 @@ class RandomSamplePipeline:
         logger.info(f"Random seed: {self.seed}")
         logger.info(f"Note status filter: {self.status}")
 
-    def sample_notes_by_status(self):
+    def sample_notes_by_status(self, exclude_existing=True):
         """
         Randomly sample tweets with notes matching the specified status.
         Uses database-level random sampling for maximum randomness.
+
+        Args:
+            exclude_existing: If True, only sample tweets WITHOUT api_data
 
         Returns:
             List of tweet_ids to process
@@ -64,107 +74,38 @@ class RandomSamplePipeline:
             # Use random() for database-level randomization
             query = (
                 session.query(Note.tweet_id)
+                .join(Tweet, Tweet.tweet_id == Note.tweet_id)
                 .filter(Note.current_status == self.status)
-                .order_by(func.random())
-                .limit(
-                    self.limit * 1
-                )  # Sample 4x: ~50% are original, ~80% are English = ~40% pass
             )
+
+            # Exclude tweets that already have API data (we want fresh ones)
+            if exclude_existing:
+                query = query.filter(Tweet.raw_api_data.is_(None))
+                logger.info("Filtering: Only tweets WITHOUT existing API data")
+
+            query = query.order_by(func.random()).limit(self.limit * 10)  # Sample extra
 
             tweet_ids = [row.tweet_id for row in query.all()]
 
-            logger.info(f"✓ Sampled {len(tweet_ids)} tweets with {self.status} notes")
+            logger.info(f"✓ Sampled {len(tweet_ids)} candidate tweets")
             logger.info(f"  Filter: current_status = {self.status}")
             logger.info(f"  Seed: {self.seed}")
 
             return tweet_ids
 
-    def fetch_api_data_for_tweets(self, tweet_ids):
-        """
-        Fetch Twitter API data for sampled tweets.
-        Step 1.5: Get API data before video identification.
-
-        Args:
-            tweet_ids: List of tweet IDs to fetch API data for
-
-        Returns:
-            True if successful, False otherwise
-        """
-        logger.info("\n" + "=" * 70)
-        logger.info("Step 1.5: Fetching Twitter API Data")
-        logger.info("=" * 70)
-
-        from scripts.services.twitter_service import TwitterService
-
-        twitter = TwitterService()
-
-        if not twitter.is_available():
-            logger.error("Twitter API not available! Cannot proceed.")
-            logger.error("Set TWITTER_BEARER_TOKEN in .env file")
-            return False
-
-        logger.info(f"Fetching API data for {len(tweet_ids)} tweets...")
-        twitter.fetch_tweets([str(tid) for tid in tweet_ids], save_to_db=True)
-
-        logger.info(f"✓ API data fetched and saved to database")
-        return True
-
-    def filter_original_english_tweets(self, tweet_ids):
-        """
-        Filter for original (non-RT/reply) English tweets.
-        Step 2: Apply filters BEFORE identifying videos.
-
-        Args:
-            tweet_ids: List of tweet IDs to filter
-
-        Returns:
-            List of filtered tweet IDs
-        """
-        logger.info("\n" + "=" * 70)
-        logger.info("Step 2: Filtering for Original English Tweets")
-        logger.info("=" * 70)
-
-        from database import get_session, Tweet
-        from scripts.data_processing.create_dataset import DatasetCreator
-
-        with get_session() as session:
-            tweets = session.query(Tweet).filter(Tweet.tweet_id.in_(tweet_ids)).all()
-
-            original_count = 0
-            english_count = 0
-            filtered_ids = []
-
-            for tweet in tweets:
-                if not DatasetCreator.is_original_tweet(tweet):
-                    continue
-                original_count += 1
-
-                if not DatasetCreator.is_english_tweet(tweet):
-                    continue
-                english_count += 1
-
-                filtered_ids.append(tweet.tweet_id)
-
-            logger.info(f"Total tweets checked: {len(tweets)}")
-            logger.info(f"  ✓ Original (not RT/reply): {original_count}")
-            logger.info(f"  ✓ English: {english_count}")
-            logger.info(f"  Final filtered: {len(filtered_ids)}")
-            logger.info(f"  Filtered out: {len(tweets) - len(filtered_ids)}")
-
-            return filtered_ids
-
     def identify_video_tweets(self, tweet_ids):
         """
         Check which tweets actually contain videos using yt-dlp metadata.
+        This checks Twitter directly to see if videos exist.
 
         Args:
             tweet_ids: List of tweet IDs to check
 
         Returns:
-            Number of video tweets identified
+            List of tweet IDs that have videos
         """
         logger.info("\n" + "=" * 70)
-        logger.info("Step 3: Identifying Video Tweets")
+        logger.info("Step 2: Identifying Video Tweets (Metadata Check)")
         logger.info("=" * 70)
 
         # Use the existing identify_video_notes script
@@ -192,23 +133,25 @@ class RandomSamplePipeline:
         try:
             subprocess.run(cmd, check=True)
 
-            # Count how many videos we found
+            # Get list of tweets that have videos
             with get_session() as session:
-                video_count = (
-                    session.query(MediaMetadata)
+                video_tweets = (
+                    session.query(MediaMetadata.tweet_id)
                     .filter(
                         MediaMetadata.tweet_id.in_(tweet_ids),
                         MediaMetadata.media_type == "video",
                     )
-                    .count()
+                    .distinct()
+                    .all()
                 )
 
-                logger.info(f"✓ Found {video_count} video tweets")
-                return video_count
+                video_tweet_ids = [row.tweet_id for row in video_tweets]
+                logger.info(f"✓ Found {len(video_tweet_ids)} tweets with videos")
+                return video_tweet_ids
 
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to identify videos: {e}")
-            return 0
+            return []
         finally:
             # Clean up temp file
             if temp_file.exists():
@@ -225,7 +168,7 @@ class RandomSamplePipeline:
             True if successful, False otherwise
         """
         logger.info("\n" + "=" * 70)
-        logger.info("Step 4: Downloading Videos")
+        logger.info("Step 3: Downloading Videos")
         logger.info("=" * 70)
 
         # Save tweet_ids to temporary file for download_videos.py
@@ -236,7 +179,7 @@ class RandomSamplePipeline:
             for tweet_id in tweet_ids:
                 f.write(f"{tweet_id}\n")
 
-        logger.info(f"Downloading videos from {len(tweet_ids)} pre-filtered tweets")
+        logger.info(f"Downloading videos from {len(tweet_ids)} video tweets")
 
         cmd = [
             sys.executable,
@@ -264,6 +207,36 @@ class RandomSamplePipeline:
             # Clean up temp file
             if temp_file.exists():
                 temp_file.unlink()
+
+    def fetch_api_data_for_tweets(self, tweet_ids):
+        """
+        Fetch Twitter API data for tweets with downloaded videos.
+        Step 4: Get API data AFTER video download.
+
+        Args:
+            tweet_ids: List of tweet IDs to fetch API data for
+
+        Returns:
+            True if successful, False otherwise
+        """
+        logger.info("\n" + "=" * 70)
+        logger.info("Step 4: Fetching Twitter API Data")
+        logger.info("=" * 70)
+
+        from scripts.services.twitter_service import TwitterService
+
+        twitter = TwitterService()
+
+        if not twitter.is_available():
+            logger.error("Twitter API not available! Cannot proceed.")
+            logger.error("Set TWITTER_BEARER_TOKEN in .env file")
+            return False
+
+        logger.info(f"Fetching API data for {len(tweet_ids)} tweets...")
+        twitter.fetch_tweets([str(tid) for tid in tweet_ids], save_to_db=True)
+
+        logger.info(f"✓ API data fetched and saved to database")
+        return True
 
     def create_dataset(self):
         """
@@ -297,53 +270,79 @@ class RandomSamplePipeline:
 
     def run(self):
         """
-        Run the complete random sample pipeline.
+        Run the complete random sample pipeline with NEW workflow:
+        1. Sample tweets WITHOUT api_data
+        2. Identify which have videos (metadata check), resample if needed
+        3. Download videos
+        4. Call API for those tweets
+        5. Create dataset (filtering is fine here)
         """
         logger.info("\n" + "=" * 70)
         logger.info("RANDOM SAMPLE PIPELINE")
         logger.info("=" * 70)
-        logger.info(f"Target: {self.limit} videos from {self.status} notes")
+        logger.info(f"Target: {self.limit} video tweets from {self.status} notes")
         logger.info(f"Random seed: {self.seed}")
         logger.info(f"Force mode: {self.force}")
         logger.info("=" * 70)
 
         start_time = datetime.now()
 
-        # Step 1: Sample notes by status
-        tweet_ids = self.sample_notes_by_status()
-        if not tweet_ids:
-            logger.error(f"No notes with status {self.status} found!")
-            return False
+        # Step 1: Sample tweets WITHOUT existing API data
+        video_tweet_ids = []
+        attempts = 0
+        max_attempts = 10
 
-        # Step 1.5: Fetch API data (NEW)
-        if not self.fetch_api_data_for_tweets(tweet_ids):
-            return False
-
-        # Step 2: Filter for original English tweets (NEW)
-        filtered_tweet_ids = self.filter_original_english_tweets(tweet_ids)
-        if not filtered_tweet_ids:
-            logger.error("No tweets passed original/English filters!")
-            return False
-
-        # Adjust limit based on filtered results
-        adjusted_limit = min(self.limit, len(filtered_tweet_ids))
-        if adjusted_limit < self.limit:
+        while len(video_tweet_ids) < self.limit and attempts < max_attempts:
+            attempts += 1
             logger.info(
-                f"Adjusted video download limit: {adjusted_limit} (fewer tweets passed filters)"
+                f"\n[Sampling Attempt {attempts}] Need {self.limit - len(video_tweet_ids)} more video tweets"
             )
 
-        # Step 3: Identify video tweets (use filtered IDs)
-        video_count = self.identify_video_tweets(filtered_tweet_ids)
-        if video_count == 0:
-            logger.error("No video tweets found!")
+            # Sample candidate tweets
+            candidate_tweet_ids = self.sample_notes_by_status(exclude_existing=True)
+            if not candidate_tweet_ids:
+                logger.error(f"No more tweets to sample (all have API data)!")
+                break
+
+            # Step 2: Identify which have videos
+            new_video_tweet_ids = self.identify_video_tweets(candidate_tweet_ids)
+            if not new_video_tweet_ids:
+                logger.warning("No video tweets found in this batch, resampling...")
+                continue
+
+            # Add to our collection (avoid duplicates)
+            for tweet_id in new_video_tweet_ids:
+                if tweet_id not in video_tweet_ids:
+                    video_tweet_ids.append(tweet_id)
+                    if len(video_tweet_ids) >= self.limit:
+                        break
+
+            logger.info(
+                f"Progress: {len(video_tweet_ids)}/{self.limit} video tweets collected"
+            )
+
+        # Trim to exact limit
+        video_tweet_ids = video_tweet_ids[: self.limit]
+
+        if not video_tweet_ids:
+            logger.error("Failed to find any video tweets!")
             return False
 
-        # Step 4: Download videos (use filtered IDs)
-        if not self.download_videos(filtered_tweet_ids):
+        logger.info(
+            f"\n✓ Collected {len(video_tweet_ids)} video tweets after {attempts} attempts"
+        )
+
+        # Step 3: Download videos
+        if not self.download_videos(video_tweet_ids):
             logger.error("Video download failed!")
             return False
 
-        # Step 5: Create dataset
+        # Step 4: Fetch API data for these tweets
+        if not self.fetch_api_data_for_tweets(video_tweet_ids):
+            logger.error("API fetch failed!")
+            return False
+
+        # Step 5: Create dataset (filtering happens here)
         if not self.create_dataset():
             logger.error("Dataset creation failed!")
             return False
@@ -354,11 +353,14 @@ class RandomSamplePipeline:
         logger.info("PIPELINE COMPLETE!")
         logger.info("=" * 70)
         logger.info(f"✓ Successfully created dataset")
+        logger.info(f"✓ Started with {len(video_tweet_ids)} video tweets")
         logger.info(f"✓ From {self.status} notes only")
-        logger.info(f"✓ Original English tweets only")
         logger.info(f"✓ Random seed: {self.seed}")
         logger.info(f"✓ Time elapsed: {elapsed}")
         logger.info(f"\nDataset location: data/evaluation/latest/dataset.json")
+        logger.info(
+            "Note: Final dataset may have fewer tweets due to original/English filtering"
+        )
         logger.info("=" * 70)
 
         return True
