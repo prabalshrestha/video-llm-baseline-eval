@@ -71,8 +71,14 @@ class GeminiService(VideoLLMService):
                         "response_schema": {
                             "type": "object",
                             "properties": {
+                                "predicted_label": {"type": "string"},
                                 "is_misleading": {"type": "boolean"},
+                                "predicted_label": {"type": "string"},
                                 "summary": {"type": "string"},
+                                "sources": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
                                 "reasons": {
                                     "type": "array",
                                     "items": {"type": "string"},
@@ -84,8 +90,11 @@ class GeminiService(VideoLLMService):
                                 "explanation": {"type": "string"},
                             },
                             "required": [
+                                "predicted_label",
                                 "is_misleading",
+                                "predicted_label",
                                 "summary",
+                                "sources",
                                 "reasons",
                                 "confidence",
                             ],
@@ -109,6 +118,7 @@ class GeminiService(VideoLLMService):
         tweet_text: str,
         author_name: str,
         author_username: Optional[str] = None,
+        tweet_created_at: Optional[str] = None,
     ) -> Dict:
         """
         Analyze video using Gemini 1.5 Pro with structured output.
@@ -118,6 +128,7 @@ class GeminiService(VideoLLMService):
             tweet_text: Text of the tweet
             author_name: Name of the tweet author
             author_username: Username of the tweet author
+            tweet_created_at: Creation time of the tweet (optional)
 
         Returns:
             Dictionary with analysis results conforming to VideoAnalysisResult
@@ -151,7 +162,11 @@ class GeminiService(VideoLLMService):
 
             # Generate prompt using centralized template
             prompt = PromptTemplate.get_structured_prompt(
-                tweet_text, author_name, author_username, model_type="gemini"
+                tweet_text,
+                author_name,
+                author_username,
+                model_type="gemini",
+                tweet_created_at=tweet_created_at,
             )
 
             # Generate response
@@ -169,8 +184,10 @@ class GeminiService(VideoLLMService):
             result = VideoAnalysisResult(
                 success=True,
                 model=self.model_name,
+                predicted_label=community_note.predicted_label,
                 is_misleading=community_note.is_misleading,
                 summary=community_note.summary,
+                sources=community_note.sources,
                 reasons=community_note.reasons,
                 confidence=community_note.confidence,
                 raw_response=response.text,

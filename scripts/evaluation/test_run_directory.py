@@ -24,7 +24,7 @@ class MockService:
     def is_available(self):
         return True
     
-    def analyze_video(self, video_path, tweet_text, author_name, author_username=None):
+    def analyze_video(self, video_path, tweet_text, author_name, author_username=None, tweet_created_at=None):
         return {
             "success": True,
             "model": self.model_name,

@@ -105,6 +105,7 @@ class GPT4oService(VideoLLMService):
         tweet_text: str,
         author_name: str,
         author_username: Optional[str] = None,
+        tweet_created_at: Optional[str] = None,
     ) -> Dict:
         """
         Analyze video using GPT-4o with structured output.
@@ -117,6 +118,7 @@ class GPT4oService(VideoLLMService):
             tweet_text: Text of the tweet
             author_name: Name of the tweet author
             author_username: Username of the tweet author
+            tweet_created_at: Creation time of the tweet (optional)
 
         Returns:
             Dictionary with analysis results conforming to VideoAnalysisResult
@@ -134,7 +136,11 @@ class GPT4oService(VideoLLMService):
             # Generate prompts using centralized templates
             system_prompt = PromptTemplate.get_system_prompt()
             user_prompt = PromptTemplate.get_structured_prompt(
-                tweet_text, author_name, author_username, model_type="gpt4o"
+                tweet_text,
+                author_name,
+                author_username,
+                model_type="gpt4o",
+                tweet_created_at=tweet_created_at,
             )
 
             logger.info(f"Analyzing video with {self.model_name}...")
@@ -186,8 +192,10 @@ class GPT4oService(VideoLLMService):
             result = VideoAnalysisResult(
                 success=True,
                 model=self.model_name,
+                predicted_label=community_note.predicted_label,
                 is_misleading=community_note.is_misleading,
                 summary=community_note.summary,
+                sources=community_note.sources,
                 reasons=community_note.reasons,
                 confidence=community_note.confidence,
                 raw_response=response.choices[0].message.content or "",

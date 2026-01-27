@@ -36,6 +36,7 @@ class VideoLLMService(ABC):
         tweet_text: str,
         author_name: str,
         author_username: Optional[str] = None,
+        tweet_created_at: Optional[str] = None,
     ) -> Dict:
         """
         Analyze a video for misinformation.
@@ -45,6 +46,7 @@ class VideoLLMService(ABC):
             tweet_text: Text of the tweet
             author_name: Name of the tweet author
             author_username: Username of the tweet author
+            tweet_created_at: Creation time of the tweet (optional)
 
         Returns:
             Dictionary with analysis results

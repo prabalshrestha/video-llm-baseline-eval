@@ -399,6 +399,7 @@ class VideoLLMEvaluator:
         tweet_text = sample["tweet"]["text"]
         author_name = sample["tweet"]["author_name"]
         author_username = sample["tweet"].get("author_username")
+        tweet_created_at = sample["tweet"].get("created_at")
 
         # Get first community note (dataset has array of notes)
         community_notes = sample.get("community_notes", [])
@@ -442,7 +443,7 @@ class VideoLLMEvaluator:
                     start_time = time.time()
                     
                     output = service.analyze_video(
-                        video_path, tweet_text, author_name, author_username
+                        video_path, tweet_text, author_name, author_username, tweet_created_at
                     )
                     
                     elapsed_time = time.time() - start_time
