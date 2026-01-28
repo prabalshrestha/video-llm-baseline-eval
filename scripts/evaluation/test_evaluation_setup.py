@@ -81,17 +81,17 @@ def test_dataset():
     print("TESTING DATASET")
     print("=" * 70)
 
-    dataset_path = Path("data/evaluation/dataset.json")
+    dataset_path = Path("data/evaluation/latest/dataset.json")
     if dataset_path.exists():
         import json
 
         with open(dataset_path) as f:
             data = json.load(f)
         total_samples = data.get("dataset_info", {}).get("total_samples", 0)
-        print(f"✓ Dataset found: {total_samples} samples")
+        print(f"✓ Dataset found: {total_samples} samples (latest)")
         return True
     else:
-        print("✗ Dataset not found")
+        print("✗ Latest dataset not found")
         print("  Run: python main.py dataset")
         return False
 

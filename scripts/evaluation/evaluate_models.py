@@ -59,7 +59,7 @@ class VideoLLMEvaluator:
 
     def __init__(
         self,
-        dataset_path: str = "data/evaluation/dataset.json",
+        dataset_path: str = "data/evaluation/latest/dataset.json",
         output_dir: str = "data/evaluation",
         cache_file: Optional[str] = None,
         model_configs: Optional[Dict] = None,
@@ -740,8 +740,8 @@ def main():
     )
     parser.add_argument(
         "--dataset",
-        default="data/evaluation/dataset.json",
-        help="Path to evaluation dataset",
+        default="data/evaluation/latest/dataset.json",
+        help="Path to evaluation dataset (default: latest symlink)",
     )
     parser.add_argument(
         "--models",
