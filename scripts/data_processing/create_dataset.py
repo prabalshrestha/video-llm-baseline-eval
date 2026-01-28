@@ -462,8 +462,12 @@ class DatasetCreator:
             "samples": dataset,
         }
 
-        # Save timestamped JSON
-        json_file = datasets_dir / f"dataset_{timestamp}.json"
+        # Create timestamped directory for this dataset
+        dataset_dir = datasets_dir / f"dataset_{timestamp}"
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save JSON in timestamped directory
+        json_file = dataset_dir / "dataset.json"
         with open(json_file, "w", encoding="utf-8") as f:
             json.dump(output, f, indent=2, ensure_ascii=False)
         logger.info(f"✓ Saved: {json_file}")
@@ -507,7 +511,7 @@ class DatasetCreator:
                 }
                 flattened.append(flat)
 
-            csv_file = datasets_dir / f"dataset_{timestamp}.csv"
+            csv_file = dataset_dir / "dataset.csv"
             df = pd.DataFrame(flattened)
             df.to_csv(csv_file, index=False, encoding="utf-8")
             logger.info(
@@ -633,7 +637,7 @@ class DatasetCreator:
                 logger.info(f"  Latest: {self.output_dir}/latest/dataset.json")
                 logger.info(f"          {self.output_dir}/latest/dataset.csv")
                 logger.info(
-                    f"  Timestamped: {self.output_dir}/datasets/dataset_{{timestamp}}.{{json,csv}}"
+                    f"  Timestamped: {self.output_dir}/datasets/dataset_{{timestamp}}/dataset.{{json,csv}}"
                 )
 
                 return True
