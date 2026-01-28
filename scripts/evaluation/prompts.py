@@ -25,7 +25,7 @@ class PromptTemplate:
         tweet_text: str,
         author_name: str,
         author_username: Optional[str] = None,
-        tweet_post_time: Optional[str] = None,
+        tweet_created_at: Optional[str] = None,
         author_description: Optional[str] = None,
         model_type: str = "gemini",
     ) -> str:
@@ -38,7 +38,7 @@ class PromptTemplate:
             tweet_text: The text content of the tweet
             author_name: Name of the tweet author
             author_username: Username of the tweet author (optional)
-            tweet_post_time: When the tweet was posted (optional)
+            tweet_created_at: When the tweet was posted (optional)
             author_description: Author's profile description (optional, placeholder for future)
             model_type: Type of model ("gemini" for video, "gpt4o" for frames)
 
@@ -61,17 +61,17 @@ class PromptTemplate:
         context_lines = [
             f"Tweet Author: {author_info}",
         ]
-        if tweet_post_time:
-            context_lines.append(f"Tweet Posted: {tweet_post_time}")
+        if tweet_created_at:
+            context_lines.append(f"Tweet Posted: {tweet_created_at}")
         if author_description:
             context_lines.append(f"Author Bio: {author_description}")
         else:
             context_lines.append(f"Author Bio: [Not available]")
         context_lines.append(f'Tweet Text: "{tweet_text}"')
-        
+
         context_section = "\n".join(context_lines)
 
-        prompt = f"""You are a Community Notes contributor analyzing video content for potential misinformation, similar to X/Twitter's Community Notes system.
+        prompt = f"""You are a Community Notes contributor specializing in video content analysis and misinformation detection. Unlike traditional expert fact-checkers, you aim to provide balanced, evidence-based context that addresses issues like political bias and brings diverse perspectives together. You have deep knowledge of common manipulation techniques, deepfakes, and misleading editing practices. You provide clear, neutral explanations with credible sources, similar to X/Twitter's Community Notes system.
 
 **Context:**
 {context_section}
@@ -129,13 +129,18 @@ def get_structured_prompt(
     tweet_text: str,
     author_name: str,
     author_username: Optional[str] = None,
-    tweet_post_time: Optional[str] = None,
+    tweet_created_at: Optional[str] = None,
     author_description: Optional[str] = None,
     model_type: str = "gemini",
 ) -> str:
     """Get the structured prompt."""
     return PromptTemplate.get_structured_prompt(
-        tweet_text, author_name, author_username, tweet_post_time, author_description, model_type
+        tweet_text,
+        author_name,
+        author_username,
+        tweet_created_at,
+        author_description,
+        model_type,
     )
 
 

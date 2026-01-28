@@ -19,6 +19,7 @@ ReasonCategory = Literal[
     "other",  # The post is misleading for reasons not covered above
 ]
 
+
 # Type alias for confidence levels
 ConfidenceLevel = Literal["high", "medium", "low"]
 
