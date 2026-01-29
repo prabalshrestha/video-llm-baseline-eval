@@ -61,13 +61,11 @@ class GeminiService(VideoLLMService):
     - Cleanup
 
     Supports multiple Gemini models:
-    - gemini-1.5-pro (default) - Original workhorse model
-    - gemini-2.0-flash-exp - Fast experimental model
-    - gemini-exp-1206 - Latest experimental model
+    - gemini-2.5-flash (default)
     """
 
     def __init__(
-        self, api_key: Optional[str] = None, model_name: str = "gemini-1.5-pro"
+        self, api_key: Optional[str] = None, model_name: str = "gemini-2.5-flash"
     ):
         """Initialize Gemini service with LangGraph workflow.
 
