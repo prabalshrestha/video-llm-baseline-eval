@@ -47,8 +47,9 @@ MODEL_CONFIGS = {
             "qwen3-vl-8b-thinking",
             "qwen3-vl-32b",
             "qwen3-vl-235b-a22b",
+            "qwen3-vl-cloud",
         ],
-        "default": "qwen2.5-vl-7b-instruct",
+        "default": "qwen3-vl-cloud",
         "service_class": QwenService,
     },
 }
@@ -94,7 +95,7 @@ class VideoLLMEvaluator:
         self.services["gpt4o"] = GPT4oService()
 
         # Initialize Qwen (support both API and local modes)
-        qwen_variant = self.model_configs.get("qwen", "qwen2.5-vl-7b-instruct")
+        qwen_variant = self.model_configs.get("qwen", "qwen3-vl-cloud")
         use_local = self.model_configs.get("qwen_local", False)
         self.services["qwen"] = QwenService(
             model_name=qwen_variant, use_local=use_local
@@ -259,7 +260,9 @@ class VideoLLMEvaluator:
                         "tweet_text": result.get("tweet_text"),
                         "human_note": result.get("human_note"),
                         "output": result[output_key],
-                        "response_time_seconds": result[output_key].get("response_time_seconds"),
+                        "response_time_seconds": result[output_key].get(
+                            "response_time_seconds"
+                        ),
                     }
 
                     if metrics_key in result:
@@ -440,15 +443,20 @@ class VideoLLMEvaluator:
                 logger.info(f"Evaluating {sample_id} with {model_name}...")
                 try:
                     import time
+
                     start_time = time.time()
-                    
+
                     output = service.analyze_video(
-                        video_path, tweet_text, author_name, author_username, tweet_created_at
+                        video_path,
+                        tweet_text,
+                        author_name,
+                        author_username,
+                        tweet_created_at,
                     )
-                    
+
                     elapsed_time = time.time() - start_time
                     output["response_time_seconds"] = round(elapsed_time, 2)
-                    
+
                     result[f"{model_name}_output"] = output
                     logger.info(f"  Completed in {elapsed_time:.2f}s")
 
@@ -658,15 +666,18 @@ class VideoLLMEvaluator:
                 correct / len(model_results) if model_results else 0
             )
             stats[model]["total_evaluated"] = len(model_results)
-            
+
             # Response time statistics
             response_times = [
                 r[f"{model}_output"].get("response_time_seconds", 0)
                 for r in model_results
-                if f"{model}_output" in r and r[f"{model}_output"].get("response_time_seconds")
+                if f"{model}_output" in r
+                and r[f"{model}_output"].get("response_time_seconds")
             ]
             if response_times:
-                stats[model]["avg_response_time"] = sum(response_times) / len(response_times)
+                stats[model]["avg_response_time"] = sum(response_times) / len(
+                    response_times
+                )
                 stats[model]["min_response_time"] = min(response_times)
                 stats[model]["max_response_time"] = max(response_times)
                 stats[model]["total_response_time"] = sum(response_times)
@@ -679,7 +690,7 @@ class VideoLLMEvaluator:
 
         f.write("Classification Performance:\n")
         f.write(f"  Accuracy: {stats.get('classification_accuracy', 0):.1%}\n\n")
-        
+
         # Response time statistics
         if "avg_response_time" in stats:
             f.write("Response Time Performance:\n")
@@ -725,11 +736,11 @@ class VideoLLMEvaluator:
                             f" | Correct={m.get('classification_correct', False)} "
                             f"| Sem={m.get('semantic_similarity', 0):.2f}"
                         )
-                    
+
                     # Add response time
                     if output.get("response_time_seconds"):
                         f.write(f" | Time={output['response_time_seconds']:.2f}s")
-                    
+
                     f.write("\n")
 
 
