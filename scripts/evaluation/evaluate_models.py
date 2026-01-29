@@ -96,10 +96,7 @@ class VideoLLMEvaluator:
 
         # Initialize Qwen (support both API and local modes)
         qwen_variant = self.model_configs.get("qwen", "qwen3-vl-cloud")
-        use_local = self.model_configs.get("qwen_local", False)
-        self.services["qwen"] = QwenService(
-            model_name=qwen_variant, use_local=use_local
-        )
+        self.services["qwen"] = QwenService(model_name=qwen_variant)
 
         self.metrics = EvaluationMetrics()
 
