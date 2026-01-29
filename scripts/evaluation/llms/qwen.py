@@ -53,20 +53,28 @@ class VideoAnalysisState(TypedDict):
 class QwenService(VideoLLMService):
     """Qwen VL service for video analysis using LangChain + Ollama.
 
-    Uses LangGraph workflow orchestration with Ollama for local inference.
+    Uses LangGraph workflow orchestration with Ollama.
     
-    Supports Qwen3-VL models via Ollama:
-    - qwen3-vl-cloud: Optimized for cloud deployment (recommended)
-    - qwen2.5-vl: Standard Qwen 2.5 VL model
+    Supports TWO types of Ollama models:
+    
+    1. LOCAL models (no API key):
+       - qwen2.5-vl, qwen3-vl-32b (no -cloud suffix)
+       - Run on your machine, 100% free
+       - Requires: Ollama installed + model pulled
+    
+    2. CLOUD models (API key required):
+       - qwen3-vl-cloud, qwen3-vl:235b-cloud (with -cloud suffix)
+       - Run on Ollama's servers, no local GPU needed
+       - Requires: OLLAMA_API_KEY from https://ollama.com/settings/keys
     
     Workflow nodes:
     - prepare: Prepare video data for analysis
-    - analyze: Generate analysis using Ollama with structured output
+    - analyze: Generate analysis with structured output
     - error: Handle errors gracefully
     
     Requirements:
-    - Ollama installed and running (https://ollama.ai)
-    - Qwen VL model pulled: `ollama pull qwen3-vl-cloud`
+    - Ollama installed (https://ollama.ai)
+    - For cloud models: OLLAMA_API_KEY environment variable
     """
 
     def __init__(
@@ -74,34 +82,64 @@ class QwenService(VideoLLMService):
         api_key: Optional[str] = None,
         model_name: str = "qwen3-vl-cloud",
         ollama_base_url: Optional[str] = None,
-        use_local: bool = True,  # Default to Ollama (local)
+        use_local: bool = True,  # Default to Ollama
     ):
         """Initialize Qwen service with LangChain + Ollama.
 
         Args:
-            api_key: Legacy API key (for DashScope fallback)
-            model_name: Ollama model name (default: qwen3-vl-cloud)
-            ollama_base_url: Ollama base URL (default: http://localhost:11434)
+            api_key: API key for Ollama cloud models or DashScope
+                    - For Ollama cloud: OLLAMA_API_KEY (models with -cloud suffix)
+                    - For DashScope: DASHSCOPE_API_KEY (legacy)
+            model_name: Model name (default: qwen3-vl-cloud)
+                       - Cloud models (need API key): qwen3-vl-cloud, qwen3-vl:235b-cloud
+                       - Local models (no API key): qwen2.5-vl, qwen3-vl-32b
+            ollama_base_url: Ollama URL
+                            - Local: http://localhost:11434 (default)
+                            - Cloud: https://ollama.com (for cloud models)
             use_local: Whether to use Ollama (True) or DashScope API (False)
         """
         super().__init__(api_key)
+        
+        # Check for Ollama API key (for cloud models)
+        self.ollama_api_key = os.getenv("OLLAMA_API_KEY")
+        
+        # Check for DashScope API key (legacy)
         if not self.api_key:
             self.api_key = os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
 
         self.model_name = model_name
         self.ollama_base_url = ollama_base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         self.use_local = use_local
+        self.is_cloud_model = "-cloud" in model_name
         self._llm = None
         self._workflow = None
 
     def is_available(self) -> bool:
         """Check if Qwen service is available."""
         if self.use_local:
-            # For Ollama, check if langchain-ollama is available
+            # For Ollama, check if it's running and model is available
             try:
                 import requests
+                
+                # For cloud models, check if API key is set
+                if self.is_cloud_model and not self.ollama_api_key:
+                    logger.warning(
+                        f"Cloud model {self.model_name} requires OLLAMA_API_KEY. "
+                        f"Get one at: https://ollama.com/settings/keys or run: ollama signin"
+                    )
+                    return False
+                
                 # Check if Ollama is running
-                response = requests.get(f"{self.ollama_base_url}/api/tags", timeout=2)
+                headers = {}
+                if self.ollama_api_key:
+                    headers['Authorization'] = f'Bearer {self.ollama_api_key}'
+                
+                response = requests.get(
+                    f"{self.ollama_base_url}/api/tags",
+                    headers=headers,
+                    timeout=2
+                )
+                
                 if response.status_code == 200:
                     # Check if model is available
                     models = response.json().get("models", [])
@@ -120,7 +158,7 @@ class QwenService(VideoLLMService):
                 logger.warning("Install Ollama from https://ollama.ai")
                 return False
         else:
-            # For API inference, check if API key is set
+            # For DashScope API inference, check if API key is set
             return bool(self.api_key)
 
     def _initialize(self):
@@ -128,13 +166,27 @@ class QwenService(VideoLLMService):
         if self._llm is None:
             try:
                 if self.use_local:
+                    # Prepare headers for cloud models
+                    headers = {}
+                    if self.is_cloud_model and self.ollama_api_key:
+                        headers['Authorization'] = f'Bearer {self.ollama_api_key}'
+                        logger.info(f"Using Ollama cloud model with API key authentication")
+                    
                     # Initialize LangChain Ollama with structured output
-                    self._llm = ChatOllama(
-                        model=self.model_name,
-                        base_url=self.ollama_base_url,
-                        temperature=0.0,  # Deterministic for research
-                    ).with_structured_output(CommunityNoteOutput)
-                    logger.info(f"Initialized LangChain Ollama with structured output: {self.model_name}")
+                    ollama_kwargs = {
+                        "model": self.model_name,
+                        "base_url": self.ollama_base_url,
+                        "temperature": 0.0,  # Deterministic for research
+                    }
+                    
+                    # Add headers if using cloud model
+                    if headers:
+                        ollama_kwargs["headers"] = headers
+                    
+                    self._llm = ChatOllama(**ollama_kwargs).with_structured_output(CommunityNoteOutput)
+                    
+                    model_type = "cloud" if self.is_cloud_model else "local"
+                    logger.info(f"Initialized LangChain Ollama ({model_type}) with structured output: {self.model_name}")
                 else:
                     # Fallback to DashScope API
                     logger.info("Using DashScope API mode (legacy)")

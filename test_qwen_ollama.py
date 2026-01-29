@@ -62,12 +62,20 @@ def test_qwen_service_availability():
     
     print(f"✓ Service initialized: {service.model_name}")
     print(f"✓ Ollama URL: {service.ollama_base_url}")
+    print(f"✓ Is cloud model: {service.is_cloud_model}")
+    print(f"✓ API key configured: {bool(service.ollama_api_key)}")
     print(f"✓ Service available: {available}")
     
     if not available:
         print("\n⚠️  Qwen service not available!")
-        print("   Make sure you've pulled the model:")
-        print("   ollama pull qwen3-vl-cloud")
+        if service.is_cloud_model and not service.ollama_api_key:
+            print("   Cloud model requires API key!")
+            print("   1. Get key: https://ollama.com/settings/keys")
+            print("   2. Set: export OLLAMA_API_KEY=your_key")
+            print("   Or sign in: ollama signin")
+        else:
+            print("   Make sure you've pulled the model:")
+            print("   ollama pull qwen3-vl-cloud")
         return False
     
     return True
@@ -244,8 +252,11 @@ def main():
         print("\n❌ Cannot continue without Ollama")
         print("\nSetup Instructions:")
         print("  1. Install Ollama: https://ollama.ai")
-        print("  2. Pull model: ollama pull qwen3-vl-cloud")
-        print("  3. Verify: ollama list")
+        print("  2. Choose model type:")
+        print("     LOCAL (free):  ollama pull qwen2.5-vl")
+        print("     CLOUD (needs key): ollama pull qwen3-vl-cloud")
+        print("  3. For cloud models: export OLLAMA_API_KEY=your_key")
+        print("  4. Verify: ollama list")
         return
     
     # Test 2: Service availability
@@ -295,8 +306,11 @@ def main():
     
     print("\nNext steps:")
     print("1. Run evaluation: python main.py evaluate --models qwen --limit 3")
-    print("2. Check QWEN_OLLAMA_MIGRATION.md for more info")
-    print("3. Try different models: ollama pull qwen2.5-vl")
+    print("2. Check OLLAMA_CLOUD_UPDATE.md for cloud vs local info")
+    print("3. Try different models:")
+    print("   - Local (free): ollama pull qwen2.5-vl")
+    print("   - Cloud (needs key): ollama pull qwen3-vl-cloud")
+    print("4. For cloud models: Get API key at https://ollama.com/settings/keys")
 
 if __name__ == "__main__":
     main()

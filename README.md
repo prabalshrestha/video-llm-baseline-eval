@@ -474,12 +474,15 @@ pip install -r requirements.txt
 
 ```bash
 cp env.template .env
-# Edit .env and add your API keys
+# Edit .env and add your API keys (Gemini and/or OpenAI)
 ```
 
 Get API keys:
 - **Gemini**: https://makersuite.google.com/app/apikey
 - **OpenAI**: https://platform.openai.com/api-keys
+- **Qwen**: 
+  - Local models (qwen2.5-vl): No API key needed!
+  - Cloud models (qwen3-vl-cloud): Get from https://ollama.com/settings/keys
 
 3. **Install Ollama (for Qwen):**
 
@@ -487,8 +490,14 @@ Get API keys:
 # Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Pull Qwen model
+# Choose one:
+
+# Option A: Local model (FREE, no API key)
+ollama pull qwen2.5-vl
+
+# Option B: Cloud model (requires API key)
 ollama pull qwen3-vl-cloud
+export OLLAMA_API_KEY=your_key  # Get from https://ollama.com/settings/keys
 
 # Verify
 ollama list
@@ -526,10 +535,11 @@ python main.py evaluate --models gemini,qwen --limit 10
    - **New**: Implemented with LangGraph workflow for better orchestration
    - See `LANGGRAPH_MIGRATION.md` for details
 
-2. **Qwen3-VL-Cloud** - Open-source vision-language model via Ollama
+2. **Qwen VL** - Open-source vision-language models via Ollama
    - **New**: LangChain + Ollama + LangGraph implementation
-   - Local inference with optimized performance
-   - Requires Ollama: `ollama pull qwen3-vl-cloud`
+   - **Two options**:
+     - **Local** (qwen2.5-vl): FREE, runs on your machine, no API key
+     - **Cloud** (qwen3-vl-cloud): Runs on Ollama servers, requires OLLAMA_API_KEY
    - See `QWEN_OLLAMA_MIGRATION.md` for setup
 
 3. **GPT-4o** - Excellent for short clips with OCR-heavy content
