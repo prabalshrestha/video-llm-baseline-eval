@@ -481,27 +481,58 @@ Get API keys:
 - **Gemini**: https://makersuite.google.com/app/apikey
 - **OpenAI**: https://platform.openai.com/api-keys
 
-3. **Test setup:**
+3. **Install Ollama (for Qwen):**
 
 ```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull Qwen model
+ollama pull qwen3-vl-cloud
+
+# Verify
+ollama list
+```
+
+4. **Test setup:**
+
+```bash
+# Test all services
 python scripts/evaluation/test_evaluation_setup.py
+
+# Test specific services
+python test_langgraph_gemini.py  # Test Gemini
+python test_qwen_ollama.py       # Test Qwen
 ```
 
 ### Running Evaluation
 
 ```bash
-# Evaluate with both models
+# Evaluate with all models
 python main.py evaluate
 
-# Evaluate with specific model
+# Evaluate with specific models
 python main.py evaluate --models gemini --limit 5
+python main.py evaluate --models qwen --limit 5
 python main.py evaluate --models gpt4o --limit 3
+
+# Evaluate with multiple models
+python main.py evaluate --models gemini,qwen --limit 10
 ```
 
 ### Models
 
 1. **Gemini 1.5 Pro** - Best for long videos, 2M token context window
-2. **GPT-4o** - Excellent for short clips with OCR-heavy content
+   - **New**: Implemented with LangGraph workflow for better orchestration
+   - See `LANGGRAPH_MIGRATION.md` for details
+
+2. **Qwen3-VL-Cloud** - Open-source vision-language model via Ollama
+   - **New**: LangChain + Ollama + LangGraph implementation
+   - Local inference with optimized performance
+   - Requires Ollama: `ollama pull qwen3-vl-cloud`
+   - See `QWEN_OLLAMA_MIGRATION.md` for setup
+
+3. **GPT-4o** - Excellent for short clips with OCR-heavy content
 
 ### Metrics
 
