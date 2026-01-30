@@ -5,8 +5,10 @@ Includes text similarity (ROUGE, BLEU) and semantic similarity measures.
 """
 
 import logging
-from typing import Dict, List, Optional
-import numpy as np
+from typing import Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +162,9 @@ class EvaluationMetrics:
             return 0.0
 
         try:
+            # Lazy import to avoid segfault on module load
+            import numpy as np
+            
             self._initialize_sentence_transformer()
 
             # Generate embeddings

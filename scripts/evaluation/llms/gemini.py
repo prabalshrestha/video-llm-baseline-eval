@@ -15,13 +15,15 @@ import os
 import logging
 import time
 import json
-from typing import Dict, Optional, TypedDict, Annotated
+from typing import Dict, Optional, TypedDict, Annotated, TYPE_CHECKING
 from dotenv import load_dotenv
 
-# LangChain and LangGraph imports
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.graph import StateGraph, END
-import google.generativeai as genai
+# Lazy imports to avoid segfault issues with langchain packages
+# These will be imported only when the service is actually used
+if TYPE_CHECKING:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    from langgraph.graph import StateGraph
+    import google.generativeai as genai
 
 from scripts.evaluation.llms.base import VideoLLMService
 from scripts.evaluation.models import CommunityNoteOutput, VideoAnalysisResult
@@ -88,6 +90,10 @@ class GeminiService(VideoLLMService):
         """Initialize LangChain model and configure Gemini API."""
         if self._llm is None:
             try:
+                # Lazy import to avoid segfault on module load
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                import google.generativeai as genai
+
                 # Configure Gemini API
                 genai.configure(api_key=self.api_key)
 
@@ -107,8 +113,11 @@ class GeminiService(VideoLLMService):
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize Gemini: {e}")
 
-    def _build_workflow(self) -> StateGraph:
+    def _build_workflow(self):
         """Build the LangGraph workflow for video analysis."""
+        # Lazy import to avoid segfault on module load
+        from langgraph.graph import StateGraph, END
+        import google.generativeai as genai
 
         # Define workflow nodes
         def upload_video(state: VideoAnalysisState) -> VideoAnalysisState:

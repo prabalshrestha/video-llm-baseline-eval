@@ -17,9 +17,13 @@ import argparse
 from datetime import datetime
 from typing import Dict, List, Optional
 from tqdm import tqdm
+from dotenv import load_dotenv
 
 from scripts.evaluation.llms import GeminiService, GPT4oService, QwenService
 from scripts.evaluation.metrics import EvaluationMetrics
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -96,6 +100,7 @@ class VideoLLMEvaluator:
 
         # Initialize Qwen (support both API and local modes)
         qwen_variant = self.model_configs.get("qwen", "qwen3-vl-cloud")
+
         self.services["qwen"] = QwenService(model_name=qwen_variant)
 
         self.metrics = EvaluationMetrics()
@@ -382,6 +387,7 @@ class VideoLLMEvaluator:
         sample: Dict,
         models: List[str] = ["gemini", "gpt4o"],
         use_cache: bool = True,
+        skip_metrics: bool = False,
     ) -> Dict:
         """
         Evaluate a single video sample with specified models.
@@ -390,6 +396,7 @@ class VideoLLMEvaluator:
             sample: Sample data from dataset
             models: List of models to use ('gemini', 'gpt4o', 'qwen')
             use_cache: Whether to use cached results
+            skip_metrics: Whether to skip metrics calculation
 
         Returns:
             Dictionary with evaluation results
@@ -457,10 +464,12 @@ class VideoLLMEvaluator:
                     result[f"{model_name}_output"] = output
                     logger.info(f"  Completed in {elapsed_time:.2f}s")
 
-                    # Calculate metrics
-                    if output.get("success"):
+                    # Calculate metrics (if enabled)
+                    if output.get("success") and not skip_metrics:
                         metrics = self.metrics.compare_outputs(output, human_note)
                         result[f"{model_name}_metrics"] = metrics
+                    elif skip_metrics:
+                        result[f"{model_name}_metrics"] = {"skipped": True}
                 except Exception as e:
                     logger.error(f"Error evaluating with {model_name}: {e}")
                     result[f"{model_name}_output"] = {
@@ -482,6 +491,7 @@ class VideoLLMEvaluator:
         models: List[str] = ["gemini", "gpt4o"],
         limit: Optional[int] = None,
         use_cache: bool = True,
+        skip_metrics: bool = False,
     ) -> List[Dict]:
         """
         Evaluate all samples in the dataset.
@@ -490,6 +500,7 @@ class VideoLLMEvaluator:
             models: List of models to use
             limit: Maximum number of samples to evaluate
             use_cache: Whether to use cached results
+            skip_metrics: Whether to skip metrics calculation
 
         Returns:
             List of evaluation results
@@ -503,7 +514,7 @@ class VideoLLMEvaluator:
         results = []
         for sample in tqdm(samples, desc="Evaluating videos"):
             try:
-                result = self.evaluate_sample(sample, models, use_cache)
+                result = self.evaluate_sample(sample, models, use_cache, skip_metrics)
                 if result is not None:  # Skip samples with no community notes
                     results.append(result)
             except Exception as e:
@@ -795,6 +806,11 @@ def main():
         action="store_true",
         help="Skip generating individual model files (faster)",
     )
+    parser.add_argument(
+        "--no-metrics",
+        action="store_true",
+        help="Skip metrics calculation (faster, avoids potential import issues)",
+    )
 
     args = parser.parse_args()
 
@@ -857,6 +873,7 @@ def main():
         models=available_models,
         limit=args.limit,
         use_cache=not args.no_cache,
+        skip_metrics=args.no_metrics,
     )
 
     # Save configuration

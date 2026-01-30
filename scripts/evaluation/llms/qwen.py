@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Qwen VL service for video analysis using LangChain + Ollama.
+Qwen VL service for video analysis using Ollama API directly.
 Supports Qwen3-VL models with native video understanding via Ollama.
 """
 
@@ -15,13 +15,9 @@ import os
 import logging
 import json
 import base64
+import requests
 from typing import Dict, Optional, TypedDict
 from dotenv import load_dotenv
-
-# LangChain imports
-from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage
-from langgraph.graph import StateGraph, END
 
 from scripts.evaluation.llms.base import VideoLLMService
 from scripts.evaluation.models import CommunityNoteOutput, VideoAnalysisResult
@@ -31,47 +27,21 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-# Define the state schema for the LangGraph workflow
-class VideoAnalysisState(TypedDict):
-    """State for Qwen video analysis workflow with structured output."""
-    
-    # Input parameters
-    video_path: str
-    tweet_text: str
-    author_name: str
-    author_username: Optional[str]
-    tweet_created_at: Optional[str]
-    model_name: str
-    
-    # Workflow state (simplified with structured output!)
-    video_data: Optional[str]  # Video path for Ollama
-    prompt: Optional[str]
-    result: Optional[Dict]  # VideoAnalysisResult directly
-    error: Optional[str]
-
-
 class QwenService(VideoLLMService):
-    """Qwen VL service for video analysis using LangChain + Ollama.
+    """Qwen VL service for video analysis using Ollama API directly.
 
-    Uses LangGraph workflow orchestration with Ollama.
-    
     Supports TWO types of Ollama models:
-    
+
     1. LOCAL models (no API key):
        - qwen2.5-vl, qwen3-vl-32b (no -cloud suffix)
        - Run on your machine, 100% free
        - Requires: Ollama installed + model pulled
-    
+
     2. CLOUD models (API key required):
        - qwen3-vl-cloud, qwen3-vl:235b-cloud (with -cloud suffix)
        - Run on Ollama's servers, no local GPU needed
        - Requires: OLLAMA_API_KEY from https://ollama.com/settings/keys
-    
-    Workflow nodes:
-    - prepare: Prepare video data for analysis
-    - analyze: Generate analysis with structured output
-    - error: Handle errors gracefully
-    
+
     Requirements:
     - Ollama installed (https://ollama.ai)
     - For cloud models: OLLAMA_API_KEY environment variable
@@ -82,230 +52,168 @@ class QwenService(VideoLLMService):
         api_key: Optional[str] = None,
         model_name: str = "qwen3-vl-cloud",
         ollama_base_url: Optional[str] = None,
-        use_local: bool = True,  # Default to Ollama
     ):
-        """Initialize Qwen service with LangChain + Ollama.
+        """Initialize Qwen service with Ollama API.
 
         Args:
-            api_key: API key for Ollama cloud models or DashScope
-                    - For Ollama cloud: OLLAMA_API_KEY (models with -cloud suffix)
-                    - For DashScope: DASHSCOPE_API_KEY (legacy)
+            api_key: Optional OLLAMA_API_KEY for cloud models (can be set via env)
             model_name: Model name (default: qwen3-vl-cloud)
                        - Cloud models (need API key): qwen3-vl-cloud, qwen3-vl:235b-cloud
                        - Local models (no API key): qwen2.5-vl, qwen3-vl-32b
             ollama_base_url: Ollama URL
                             - Local: http://localhost:11434 (default)
                             - Cloud: https://ollama.com (for cloud models)
-            use_local: Whether to use Ollama (True) or DashScope API (False)
         """
         super().__init__(api_key)
-        
+
         # Check for Ollama API key (for cloud models)
-        self.ollama_api_key = os.getenv("OLLAMA_API_KEY")
-        
-        # Check for DashScope API key (legacy)
-        if not self.api_key:
-            self.api_key = os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
+        self.ollama_api_key = api_key or os.getenv("OLLAMA_API_KEY")
 
         self.model_name = model_name
-        self.ollama_base_url = ollama_base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        self.use_local = use_local
+        self.ollama_base_url = ollama_base_url or os.getenv(
+            "OLLAMA_BASE_URL", "http://localhost:11434"
+        )
         self.is_cloud_model = "-cloud" in model_name
-        self._llm = None
-        self._workflow = None
 
     def is_available(self) -> bool:
-        """Check if Qwen service is available."""
-        if self.use_local:
-            # For Ollama, check if it's running and model is available
-            try:
-                import requests
-                
-                # For cloud models, check if API key is set
-                if self.is_cloud_model and not self.ollama_api_key:
-                    logger.warning(
-                        f"Cloud model {self.model_name} requires OLLAMA_API_KEY. "
-                        f"Get one at: https://ollama.com/settings/keys or run: ollama signin"
-                    )
-                    return False
-                
-                # Check if Ollama is running
-                headers = {}
-                if self.ollama_api_key:
-                    headers['Authorization'] = f'Bearer {self.ollama_api_key}'
-                
-                response = requests.get(
-                    f"{self.ollama_base_url}/api/tags",
-                    headers=headers,
-                    timeout=2
+        """Check if Qwen service is available via Ollama."""
+        try:
+            import requests
+
+            # For cloud models, check if API key is set
+            if self.is_cloud_model and not self.ollama_api_key:
+                logger.warning(
+                    f"Cloud model {self.model_name} requires OLLAMA_API_KEY. "
+                    f"Get one at: https://ollama.com/settings/keys or run: ollama signin"
                 )
-                
-                if response.status_code == 200:
-                    # Check if model is available
-                    models = response.json().get("models", [])
-                    model_names = [m.get("name", "") for m in models]
-                    if any(self.model_name in name for name in model_names):
-                        return True
-                    else:
-                        logger.warning(
-                            f"Model {self.model_name} not found in Ollama. "
-                            f"Pull it with: ollama pull {self.model_name}"
+                return False
+
+            # Check if Ollama is running
+            headers = {}
+            if self.ollama_api_key:
+                headers["Authorization"] = f"Bearer {self.ollama_api_key}"
+
+            response = requests.get(
+                f"{self.ollama_base_url}/api/tags", headers=headers, timeout=2
+            )
+
+            if response.status_code == 200:
+                # Check if model is available
+                models = response.json().get("models", [])
+                model_names = [m.get("name", "") for m in models]
+
+                # Try exact match first
+                if self.model_name in model_names:
+                    return True
+
+                # Try flexible matching for cloud models with version numbers
+                # e.g., "qwen3-vl-cloud" should match "qwen3-vl:235b-cloud"
+                for name in model_names:
+                    # For cloud models, check if the base model and cloud suffix match
+                    # Handle cases like: qwen3-vl-cloud -> qwen3-vl:235b-cloud
+                    if self.model_name.endswith("-cloud") and name.endswith("-cloud"):
+                        # Remove -cloud suffix from both and compare base names
+                        requested_base = self.model_name[:-6]  # Remove '-cloud'
+                        available_full = name  # e.g., 'qwen3-vl:235b-cloud'
+
+                        # Check if requested base is in the available model name
+                        # qwen3-vl should match qwen3-vl:235b-cloud
+                        if requested_base in available_full:
+                            logger.info(
+                                f"Matched requested '{self.model_name}' with available '{name}'"
+                            )
+                            # Update model_name to exact match
+                            self.model_name = name
+                            return True
+                    # Also try simple substring match for other cases
+                    elif (
+                        self.model_name in name or name.split(":")[0] in self.model_name
+                    ):
+                        logger.info(
+                            f"Matched requested '{self.model_name}' with available '{name}'"
                         )
-                        return False
-                return False
-            except Exception as e:
-                logger.warning(f"Ollama not available: {e}")
-                logger.warning("Install Ollama from https://ollama.ai")
-                return False
-        else:
-            # For DashScope API inference, check if API key is set
-            return bool(self.api_key)
+                        self.model_name = name
+                        return True
 
-    def _initialize(self):
-        """Initialize LangChain Ollama model with structured output."""
-        if self._llm is None:
-            try:
-                if self.use_local:
-                    # Prepare headers for cloud models
-                    headers = {}
-                    if self.is_cloud_model and self.ollama_api_key:
-                        headers['Authorization'] = f'Bearer {self.ollama_api_key}'
-                        logger.info(f"Using Ollama cloud model with API key authentication")
-                    
-                    # Initialize LangChain Ollama with structured output
-                    ollama_kwargs = {
-                        "model": self.model_name,
-                        "base_url": self.ollama_base_url,
-                        "temperature": 0.0,  # Deterministic for research
-                    }
-                    
-                    # Add headers if using cloud model
-                    if headers:
-                        ollama_kwargs["headers"] = headers
-                    
-                    self._llm = ChatOllama(**ollama_kwargs).with_structured_output(CommunityNoteOutput)
-                    
-                    model_type = "cloud" if self.is_cloud_model else "local"
-                    logger.info(f"Initialized LangChain Ollama ({model_type}) with structured output: {self.model_name}")
-                else:
-                    # Fallback to DashScope API
-                    logger.info("Using DashScope API mode (legacy)")
-                    
-            except ImportError as e:
-                raise ImportError(
-                    f"Required libraries not installed: {e}\n"
-                    "Install with: pip install langchain-ollama"
+                logger.warning(
+                    f"Model {self.model_name} not found in Ollama. "
+                    f"Available models: {', '.join(model_names)}\n"
+                    f"Pull it with: ollama pull {self.model_name}"
                 )
-            except Exception as e:
-                raise RuntimeError(f"Failed to initialize Qwen: {e}")
+                return False
+            return False
+        except Exception as e:
+            logger.warning(f"Ollama not available: {e}")
+            logger.warning("Install Ollama from https://ollama.ai")
+            return False
 
-    def _build_workflow(self) -> StateGraph:
-        """Build the LangGraph workflow for Qwen video analysis."""
-        
-        def prepare_video(state: VideoAnalysisState) -> VideoAnalysisState:
-            """Prepare video data for analysis."""
-            logger.info(f"Preparing video: {state['video_path']}")
-            try:
-                # For Ollama, we pass the video file path directly
-                # Ollama's multimodal support handles video loading
-                state["video_data"] = state["video_path"]
-                logger.info("  ✓ Video prepared")
-            except Exception as e:
-                state["error"] = f"Video preparation failed: {e}"
-                logger.error(state["error"])
-            return state
-        
-        def analyze_video(state: VideoAnalysisState) -> VideoAnalysisState:
-            """Generate analysis using LangChain Ollama with structured output."""
-            if state.get("error"):
-                return state
-                
-            try:
-                # Generate prompt
-                prompt = PromptTemplate.get_structured_prompt(
-                    state["tweet_text"],
-                    state["author_name"],
-                    state["author_username"],
-                    model_type="qwen",
-                    tweet_created_at=state.get("tweet_created_at"),
-                )
-                state["prompt"] = prompt
-                
-                logger.info(f"Analyzing with {state['model_name']}...")
-                
-                # Create multimodal message
-                # Note: Ollama's video support varies by model
-                # For now, we'll use text-only and reference the video
-                message = HumanMessage(
-                    content=[
-                        {
-                            "type": "text",
-                            "text": f"Video file: {state['video_data']}\n\n{prompt}"
-                        }
-                    ]
-                )
-                
-                # Invoke LangChain Ollama - returns CommunityNoteOutput directly!
-                community_note = self._llm.invoke([message])
-                
-                # Create result from Pydantic object
-                state["result"] = VideoAnalysisResult(
-                    success=True,
-                    model=state["model_name"],
-                    predicted_label=community_note.predicted_label,
-                    is_misleading=community_note.is_misleading,
-                    summary=community_note.summary,
-                    sources=community_note.sources,
-                    reasons=community_note.reasons,
-                    confidence=community_note.confidence,
-                    raw_response=str(community_note.model_dump()),
-                ).model_dump()
-                
-                logger.info(f"  ✓ Analysis complete (Misleading: {community_note.is_misleading})")
-                
-            except Exception as e:
-                state["error"] = f"Analysis failed: {e}"
-                logger.error(state["error"])
-                
-            return state
-        
-        def handle_error(state: VideoAnalysisState) -> VideoAnalysisState:
-            """Handle errors and create error result."""
-            if not state.get("result"):
-                state["result"] = VideoAnalysisResult(
-                    success=False,
-                    error=state.get("error", "Unknown error"),
-                    model=state["model_name"],
-                ).model_dump()
-            return state
-        
-        # Build the graph
-        workflow = StateGraph(VideoAnalysisState)
-        
-        # Add nodes (only 3 nodes now!)
-        workflow.add_node("prepare", prepare_video)
-        workflow.add_node("analyze", analyze_video)
-        workflow.add_node("error", handle_error)
-        
-        # Define edges with conditional routing
-        workflow.set_entry_point("prepare")
-        
-        # After prepare, check for errors
-        workflow.add_conditional_edges(
-            "prepare",
-            lambda state: "error" if state.get("error") else "analyze"
+    def _get_headers(self) -> Dict[str, str]:
+        """Get headers for Ollama API requests."""
+        headers = {"Content-Type": "application/json"}
+        if self.is_cloud_model and self.ollama_api_key:
+            headers["Authorization"] = f"Bearer {self.ollama_api_key}"
+        return headers
+
+    def _call_ollama_api(self, prompt: str, video_path: str) -> Dict:
+        """Call Ollama API directly with structured output format.
+
+        Args:
+            prompt: The analysis prompt
+            video_path: Path to video file
+
+        Returns:
+            Dict containing the parsed response
+        """
+        # Prepare the request
+        payload = {
+            "model": self.model_name,
+            "messages": [
+                {"role": "user", "content": f"Video file: {video_path}\n\n{prompt}"}
+            ],
+            "format": {
+                "type": "object",
+                "properties": {
+                    "predicted_label": {"type": "string"},
+                    "is_misleading": {"type": "boolean"},
+                    "summary": {"type": "string"},
+                    "sources": {"type": "array", "items": {"type": "string"}},
+                    "reasons": {"type": "array", "items": {"type": "string"}},
+                    "confidence": {"type": "string"},
+                },
+                "required": [
+                    "predicted_label",
+                    "is_misleading",
+                    "summary",
+                    "sources",
+                    "reasons",
+                    "confidence",
+                ],
+            },
+            "stream": False,
+            "options": {"temperature": 0.0},  # Deterministic for research
+        }
+
+        # Make API request
+        response = requests.post(
+            f"{self.ollama_base_url}/api/chat",
+            headers=self._get_headers(),
+            json=payload,
+            timeout=300,  # 5 minute timeout for video analysis
         )
-        
-        # After analyze, check for errors or end directly
-        workflow.add_conditional_edges(
-            "analyze",
-            lambda state: "error" if state.get("error") else END
-        )
-        
-        # Error ends
-        workflow.add_edge("error", END)
-        
-        return workflow.compile()
+        response.raise_for_status()
+
+        # Parse response
+        result = response.json()
+        message_content = result.get("message", {}).get("content", "{}")
+
+        # Parse the JSON response
+        try:
+            parsed = json.loads(message_content)
+            return parsed
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Ollama response as JSON: {e}")
+            logger.error(f"Raw response: {message_content}")
+            raise ValueError(f"Invalid JSON response from Ollama: {e}")
 
     def analyze_video(
         self,
@@ -316,12 +224,7 @@ class QwenService(VideoLLMService):
         tweet_created_at: Optional[str] = None,
     ) -> Dict:
         """
-        Analyze video using LangGraph workflow with Ollama structured output.
-
-        The workflow consists of:
-        1. Prepare video data
-        2. Generate analysis using Ollama (returns Pydantic object directly)
-        3. Handle errors gracefully
+        Analyze video using Ollama API with structured output.
 
         Args:
             video_path: Path to the video file
@@ -336,48 +239,43 @@ class QwenService(VideoLLMService):
         if not self.is_available():
             return VideoAnalysisResult(
                 success=False,
-                error=f"Qwen service not available. "
-                      f"{'Ollama not running or model not found' if self.use_local else 'API key not configured'}",
+                error="Qwen service not available. Ollama not running or model not found.",
                 model=self.model_name,
             ).model_dump()
 
         try:
-            self._initialize()
-            
-            # Build workflow (cached after first build)
-            if self._workflow is None:
-                self._workflow = self._build_workflow()
-            
-            # Create initial state
-            initial_state: VideoAnalysisState = {
-                "video_path": video_path,
-                "tweet_text": tweet_text,
-                "author_name": author_name,
-                "author_username": author_username,
-                "tweet_created_at": tweet_created_at,
-                "model_name": self.model_name,
-                "video_data": None,
-                "prompt": None,
-                "result": None,
-                "error": None,
-            }
-            
-            # Execute workflow
-            logger.info(f"Executing LangGraph workflow for Qwen analysis...")
-            final_state = self._workflow.invoke(initial_state)
-            
-            # Return result from final state
-            if final_state.get("result"):
-                return final_state["result"]
-            else:
-                return VideoAnalysisResult(
-                    success=False,
-                    error=final_state.get("error", "Unknown workflow error"),
-                    model=self.model_name,
-                ).model_dump()
+            # Generate prompt
+            prompt = PromptTemplate.get_structured_prompt(
+                tweet_text,
+                author_name,
+                author_username,
+                model_type="qwen",
+                tweet_created_at=tweet_created_at,
+            )
+
+            logger.info(f"Analyzing with {self.model_name}...")
+
+            # Call Ollama API
+            response_data = self._call_ollama_api(prompt, video_path)
+
+            # Create VideoAnalysisResult from response
+            result = VideoAnalysisResult(
+                success=True,
+                model=self.model_name,
+                predicted_label=response_data.get("predicted_label"),
+                is_misleading=response_data.get("is_misleading"),
+                summary=response_data.get("summary"),
+                sources=response_data.get("sources", []),
+                reasons=response_data.get("reasons", []),
+                confidence=response_data.get("confidence"),
+                raw_response=json.dumps(response_data),
+            )
+
+            logger.info(f"  ✓ Analysis complete (Misleading: {result.is_misleading})")
+            return result.model_dump()
 
         except Exception as e:
-            logger.error(f"Error in LangGraph workflow: {e}")
+            logger.error(f"Error in Qwen analysis: {e}")
             return VideoAnalysisResult(
                 success=False,
                 error=str(e),
@@ -386,35 +284,39 @@ class QwenService(VideoLLMService):
 
 
 if __name__ == "__main__":
-    # Test Qwen service with LangChain + Ollama
-    print("Testing Qwen VL Service (LangChain + Ollama Implementation)")
+    # Test Qwen service with Ollama API
+    print("Testing Qwen VL Service (Direct Ollama API Implementation)")
     print("=" * 70)
 
-    # Test Ollama mode (default)
-    print("\nOllama Mode (LangGraph workflow):")
-    service = QwenService(model_name="qwen3-vl-cloud", use_local=True)
+    # Test Ollama
+    print("\nOllama API (Direct HTTP calls):")
+    service = QwenService(model_name="qwen3-vl-cloud")
     print(f"  Model: {service.model_name}")
     print(f"  Ollama URL: {service.ollama_base_url}")
+    print(f"  Is cloud model: {service.is_cloud_model}")
+    print(f"  API key configured: {bool(service.ollama_api_key)}")
     print(f"  Available: {service.is_available()}")
-    print(f"  Using LangGraph workflow: ✓")
 
     if not service.is_available():
         print("\n⚠️  Ollama not available!")
         print("\nTo enable Qwen service with Ollama:")
         print("  1. Install Ollama: https://ollama.ai")
         print("  2. Pull the model: ollama pull qwen3-vl-cloud")
-        print("  3. Verify: ollama list")
-    
-    print("\nWorkflow Nodes:")
-    print("  1. prepare  - Prepare video data")
-    print("  2. analyze  - Generate analysis with Ollama (structured output)")
-    print("  3. error    - Handle errors gracefully")
-    
-    print("\nRecommended Models:")
-    print("  - qwen3-vl-cloud  - Optimized for cloud deployment (recommended)")
-    print("  - qwen2.5-vl      - Standard Qwen 2.5 VL model")
-    
+        if service.is_cloud_model:
+            print("  3. For cloud models, set OLLAMA_API_KEY")
+            print("     Get key: https://ollama.com/settings/keys")
+        print("  4. Verify: ollama list")
+
+    print("\nSupported Models:")
+    print("  LOCAL (no API key):")
+    print("    - qwen2.5-vl      - Standard Qwen 2.5 VL model")
+    print("    - qwen3-vl-32b    - Larger Qwen 3 model")
+    print("  CLOUD (requires OLLAMA_API_KEY):")
+    print("    - qwen3-vl-cloud     - Cloud optimized (recommended)")
+    print("    - qwen3-vl:235b-cloud - Large cloud model")
+
     print("\nRequirements:")
-    print("  - Ollama running locally or remotely")
-    print("  - langchain-ollama: pip install langchain-ollama")
-    print("  - Model pulled: ollama pull qwen3-vl-cloud")
+    print("  - Ollama installed: https://ollama.ai")
+    print("  - requests: pip install requests")
+    print("  - Model pulled: ollama pull <model-name>")
+    print("  - For cloud models: OLLAMA_API_KEY environment variable")
