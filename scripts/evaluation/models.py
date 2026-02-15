@@ -44,7 +44,7 @@ class CommunityNoteOutput(BaseModel):
         description="List of URLs or references used to verify claims",
     )
 
-    reasons: List[ReasonCategory] = Field(
+    reasons: List[str] = Field(
         default_factory=list,
         description="List of applicable misinformation categories: 'factual_error', 'manipulated_media', 'outdated_information', 'missing_important_context', 'disputed_claim_as_fact', 'misinterpreted_satire', 'other'",
     )
