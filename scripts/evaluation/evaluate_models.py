@@ -428,7 +428,7 @@ class VideoLLMEvaluator:
             "video_path": video_path,
             "tweet_text": tweet_text,
             "human_note": {
-                "predicted_label": human_note["predicted_label"],
+                "is_misleading": human_note["is_misleading"],
                 "summary": human_note["summary"],
                 "reasons": human_note["reasons"],
             },
