@@ -28,11 +28,7 @@ class CommunityNoteOutput(BaseModel):
     """Structured output for Community Note-style fact-checking."""
 
     predicted_label: str = Field(
-        description="One-phrase assessment label (e.g., 'Misleading', 'Accurate', 'Partially Accurate', 'Potentially Misinterpreted', 'Out of Context', 'Unverified')"
-    )
-
-    is_misleading: bool = Field(
-        description="Whether the video content is misleading or contains misinformation"
+        description="One-phrase assessment label (e.g., 'not_misleading', 'misinformed_or_potentially_misleading', 'uncertain')"
     )
 
     summary: str = Field(
@@ -66,10 +62,6 @@ class VideoAnalysisResult(BaseModel):
     model: str = Field(description="Name of the model used for analysis")
 
     predicted_label: str = Field(default="", description="One-phrase assessment label")
-
-    is_misleading: bool = Field(
-        default=False, description="Whether content is misleading"
-    )
 
     summary: str = Field(default="", description="Community note summary")
 

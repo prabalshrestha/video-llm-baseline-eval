@@ -204,7 +204,6 @@ class GeminiService(VideoLLMService):
                             "type": "object",
                             "properties": {
                                 "predicted_label": {"type": "string"},
-                                "is_misleading": {"type": "boolean"},
                                 "summary": {"type": "string"},
                                 "sources": {
                                     "type": "array",
@@ -222,7 +221,6 @@ class GeminiService(VideoLLMService):
                             },
                             "required": [
                                 "predicted_label",
-                                "is_misleading",
                                 "summary",
                                 "sources",
                                 "reasons",
@@ -243,7 +241,6 @@ class GeminiService(VideoLLMService):
                     success=True,
                     model=state["model_name"],
                     predicted_label=community_note.predicted_label,
-                    is_misleading=community_note.is_misleading,
                     summary=community_note.summary,
                     sources=community_note.sources,
                     reasons=community_note.reasons,
@@ -252,7 +249,7 @@ class GeminiService(VideoLLMService):
                 ).model_dump()
 
                 logger.info(
-                    f"  ✓ Analysis complete (Misleading: {community_note.is_misleading})"
+                    f"  ✓ Analysis complete (predicted_label: {community_note.predicted_label})"
                 )
 
             except Exception as e:
