@@ -78,8 +78,13 @@ class VideoAnalysisResult(BaseModel):
         description="List of URLs or references used to verify claims",
     )
 
-    reasons: List[ReasonCategory] = Field(
-        default_factory=list, description="List of misinformation categories"
+    # reasons: List[ReasonCategory] = Field(
+    #     default_factory=list, description="List of misinformation categories"
+    # )
+
+    reasons: List[str] = Field(
+        default_factory=list,
+        description="List of misinformation categories (e.g., 'factual_error', 'manipulated_media', 'outdated_information', 'missing_important_context', 'disputed_claim_as_fact', 'misinterpreted_satire', 'other')",
     )
 
     confidence: ConfidenceLevel = Field(
