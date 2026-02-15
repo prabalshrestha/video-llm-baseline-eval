@@ -18,7 +18,7 @@ class PromptTemplate:
         Returns:
             System prompt string defining the AI's role and expertise
         """
-        return """You are a Community Notes contributor specializing in video content analysis and misinformation detection. Unlike traditional expert fact-checkers, you aim to provide balanced, evidence-based context that addresses issues like political bias and brings diverse perspectives together. You have deep knowledge of common manipulation techniques, deepfakes, and misleading editing practices. You provide clear, neutral explanations with credible sources, similar to X/Twitter's Community Notes system."""
+        return """You are a Community Notes contributor who identifies potentially misleading social media posts and writes neutral, evidence-based contextualized responses explaining what may be missing or inaccurate. Be politically balanced, focus on verifiable claims, and cite high-quality sources."""
 
     @staticmethod
     def get_structured_prompt(
@@ -49,17 +49,9 @@ class PromptTemplate:
             f"{author_name} (@{author_username})" if author_username else author_name
         )
 
-        # Model-specific video instruction
-        if model_type == "gpt4o":
-            video_instruction = "Analyze the video frames carefully to determine whether the content is misleading or contains misinformation."
-        elif model_type == "qwen":
-            video_instruction = "Watch the video carefully, analyzing both visual and audio content to determine whether the content is misleading or contains misinformation."
-        else:
-            video_instruction = "Watch the video carefully and analyze whether the content is misleading or contains misinformation."
-
         # Build context section with optional fields
         context_lines = [
-            f"Tweet Author: {author_info}",
+            f"User name: {author_info}",
         ]
         if tweet_created_at:
             context_lines.append(f"Tweet Posted: {tweet_created_at}")
@@ -67,54 +59,54 @@ class PromptTemplate:
             context_lines.append(f"Author Bio: {author_description}")
         else:
             context_lines.append(f"Author Bio: [Not available]")
-        context_lines.append(f'Tweet Text: "{tweet_text}"')
 
         context_section = "\n".join(context_lines)
 
         prompt = f"""You are a Community Notes contributor specializing in video content analysis and misinformation detection. Unlike traditional expert fact-checkers, you aim to provide balanced, evidence-based context that addresses issues like political bias and brings diverse perspectives together. You have deep knowledge of common manipulation techniques, deepfakes, and misleading editing practices. You provide clear, neutral explanations with credible sources, similar to X/Twitter's Community Notes system.
 
-**Context:**
+**Social media post content:**
+{tweet_text}
+
+**Context of this post:**
 {context_section}
 
-**Your Task:**
-{video_instruction}
+**Task:**
+1. **Predicted label:** Start with ONE clear label summarizing your assessment:
+- "not_misleading"
+- "misinformed_or_potentially_misleading"
+- "uncertain"
 
-**Instructions:**
-1. **Predicted Label**: Start with ONE clear predicted label for this content (e.g., "Accurate", "Misleading", "Partially Accurate", "Potentially Misinterpreted", "Out of Context", "Unverified", etc.). This label should capture your overall assessment.
+2. **Contextualization and explanation:**
+- If predicted_label is "misinformed_or_potentially_misleading", write a concise 2-3 sentence explanation of what is missing/incorrect, grounded in verifiable facts, and include at least one direct URL to a high-quality source that supports your explanation.
+- If predicted_label is "uncertain", write a concise explanation of what cannot be verified and what would be needed to verify it; include URLs if they help.
+- If you cannot find reliable sources, explicitly say so in the explanation.
 
-2. **Community Note**: Provide a concise explanation (2-3 sentences) with credible sources/URLs to back up your claims. If the content has no issues, write "No issues detected."
+3. **Misleading tags:** Select all that apply (or none if the label is "not_misleading"):
+- "manipulated_media" (if the post includes manipulated, fake, or out-of-context media)
+-"missing_important_context" (if the post omits critical context that changes the meaning)
+-"disputed_claim_as_fact" (if the post presents unverified or disputed claims as facts)
+-"misinterpreted_satire" (if the post is satire likely to be mistaken for a factual claim) 
+-"outdated_information"
+-"factual_error"
+-"other"
+Confidence: Choose one:
+-"high": at least two credible sources provide consistent, direct support
+-"medium": one credible source OR multiple sources with minor conflicts/indirect support
+-"low": no direct reliable sources OR sources conflict substantially OR verification requires expertise/data not available
 
-3. **Misinformation Categories**: Identify applicable categories from the following (select all that apply, or leave empty if none):
-   - "factual_error": The post contains factual inaccuracies
-   - "manipulated_media": The post includes manipulated, fake, or out-of-context media
-   - "outdated_information": The post shares information that is no longer current or accurate
-   - "missing_important_context": The post omits critical context that changes the meaning
-   - "disputed_claim_as_fact": The post presents unverified or disputed claims as facts
-   - "misinterpreted_satire": The post is satire likely to be mistaken for a factual claim
-   - "other": The post is misleading for reasons not covered above
-
-4. **Confidence Level**: Indicate your confidence level based on available evidence:
-   - "high": Multiple credible sources exist and are consistent with each other
-   - "medium": One credible source exists, OR multiple sources exist but have minor conflicts
-   - "low": No direct sources available, OR multiple sources exist but significantly conflict, OR assessment based primarily on general knowledge
-
-**Response Format:**
-Return a JSON object with these exact fields:
-- predicted_label (string): Your one-phrase assessment (e.g., "Misleading", "Partially Accurate", "Accurate", etc.)
-- is_misleading (boolean): true if misleading, false otherwise
-- summary (string): Clear, factual explanation in 2-3 sentences with source URLs
+**Output requirements:**
+Return JSON only (no extra text). Use exactly these fields:
+- predicted_label (string)
+- explanation (string): 2-3 sentences with URLs, or "" only if predicted_label is "not misleading"
 - sources (array of strings): List of URLs or references used to verify claims
-- reasons (array of strings): List applicable misinformation categories from the definitions above, or empty array if not misleading
-- confidence (string): "high", "medium", or "low" based on evidence availability
-- explanation (string): Additional context if needed
+- misleading_tags (array of strings): [] only if predicted_label is "not misleading"
+- confidence (string): "high" | "medium" | "low"
 
-**Guidelines:**
-- Be objective and factual
-- Focus on verifiable information with credible sources
-- Consider context carefully
-- Cite specific details from the video{' or visible in the frames' if model_type == 'gpt4o' else ''}
-- Provide URLs or references to support your assessment whenever possible
-- "Uncertain" means: insufficient evidence to make a determination, conflicting information from sources, or content requires specialized expertise you lack. In such cases, use "low" confidence and explain the uncertainty in your summary."""
+**Additional guidelines:**
+- Don't split hairs over minor details if the core claim is accurate.
+- Be objective and factual; don't opine.
+- Focus on verifiable information.
+"""
 
         return prompt
 
