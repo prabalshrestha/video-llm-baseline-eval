@@ -81,7 +81,8 @@ class PromptTemplate:
 - If predicted_label is "uncertain", write a concise explanation of what cannot be verified and what would be needed to verify it; include URLs if they help.
 - If you cannot find reliable sources, explicitly say so in the explanation.
 
-3. **Misleading tags:** Select all that apply (or none if the label is "not_misleading"):
+3. **Misleading tags:** 
+Select all that apply (or none if the label is "not_misleading"):
 - "manipulated_media" (if the post includes manipulated, fake, or out-of-context media)
 -"missing_important_context" (if the post omits critical context that changes the meaning)
 -"disputed_claim_as_fact" (if the post presents unverified or disputed claims as facts)
@@ -89,7 +90,8 @@ class PromptTemplate:
 -"outdated_information"
 -"factual_error"
 -"other"
-Confidence: Choose one:
+
+4. **Confidence:** Choose one:
 -"high": at least two credible sources provide consistent, direct support
 -"medium": one credible source OR multiple sources with minor conflicts/indirect support
 -"low": no direct reliable sources OR sources conflict substantially OR verification requires expertise/data not available
