@@ -8,8 +8,11 @@ NEW WORKFLOW (to respect API rate limits):
 1. Sample tweets WITHOUT existing API data (need fresh ones)
 2. Check metadata to identify which have videos (resample until target met)
 3. Download the videos
-4. Call API for those tweets
-5. Create dataset (original/English filtering happens here, some may be filtered out)
+4. Call API for those tweets (populates created_at and other metadata)
+5. Create dataset (original/English/date filtering happens here, some may be filtered out)
+
+Note: The --tweet-date filter is applied AFTER API fetch (step 5) because the 
+created_at timestamp is only available after fetching tweet data from the API.
 
 Usage:
     python scripts/data_processing/random_sample_pipeline.py --limit 100
@@ -88,10 +91,8 @@ class RandomSamplePipeline:
                 query = query.filter(Tweet.raw_api_data.is_(None))
                 logger.info("Filtering: Only tweets WITHOUT existing API data")
 
-            # Filter by tweet creation date if specified
-            if self.tweet_date:
-                query = query.filter(Tweet.created_at > self.tweet_date)
-                logger.info(f"Filtering: Only tweets created after {self.tweet_date}")
+            # Note: tweet_date filtering will be applied AFTER API fetch in create_dataset
+            # because created_at is populated from API data
 
             query = query.order_by(func.random()).limit(self.limit * 10)  # Sample extra
 
@@ -100,7 +101,7 @@ class RandomSamplePipeline:
             logger.info(f"✓ Sampled {len(tweet_ids)} candidate tweets")
             logger.info(f"  Filter: current_status = {self.status}")
             if self.tweet_date:
-                logger.info(f"  Filter: created_at > {self.tweet_date}")
+                logger.info(f"  Note: Date filter (created_at > {self.tweet_date}) will be applied after API fetch")
             logger.info(f"  Seed: {self.seed}")
 
             return tweet_ids
@@ -255,6 +256,7 @@ class RandomSamplePipeline:
         Create evaluation dataset using the existing create_dataset script.
         Now uses only the video tweet IDs from this pipeline run.
         Passes the status filter to only include matching notes.
+        Passes tweet_date filter if specified.
 
         Returns:
             True if successful, False otherwise
@@ -284,6 +286,11 @@ class RandomSamplePipeline:
 
         if self.force:
             cmd.append("--force-api-fetch")
+
+        # Pass tweet_date filter if specified
+        if self.tweet_date:
+            cmd.extend(["--tweet-date", self.tweet_date.strftime("%Y-%m-%d")])
+            logger.info(f"Passing date filter to dataset creation: {self.tweet_date}")
 
         try:
             subprocess.run(cmd, check=True)
@@ -390,12 +397,16 @@ class RandomSamplePipeline:
         logger.info(f"✓ Successfully created dataset")
         logger.info(f"✓ Started with {len(video_tweet_ids)} video tweets")
         logger.info(f"✓ From {self.status} notes only")
+        if self.tweet_date:
+            logger.info(f"✓ Filtered for tweets after {self.tweet_date}")
         logger.info(f"✓ Random seed: {self.seed}")
         logger.info(f"✓ Time elapsed: {elapsed}")
         logger.info(f"\nDataset location: data/evaluation/latest/dataset.json")
-        logger.info(
-            "Note: Final dataset may have fewer tweets due to original/English filtering"
-        )
+        filter_note = "Note: Final dataset may have fewer tweets due to original/English"
+        if self.tweet_date:
+            filter_note += "/date"
+        filter_note += " filtering"
+        logger.info(filter_note)
         logger.info("=" * 70)
 
         return True

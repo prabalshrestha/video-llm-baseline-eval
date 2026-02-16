@@ -38,6 +38,7 @@ class DatasetCreator:
         api_data_only: bool = False,
         note_status_filter: str = None,
         tweet_ids: List[str] = None,
+        tweet_date: datetime = None,
     ):
         self.data_dir = Path(data_dir)
         self.output_dir = self.data_dir / "evaluation"
@@ -52,6 +53,7 @@ class DatasetCreator:
         self.api_data_only = api_data_only  # Only include tweets with existing API data
         self.note_status_filter = note_status_filter  # Filter notes by status
         self.tweet_ids = tweet_ids  # Optional: specific tweet IDs to include
+        self.tweet_date = tweet_date  # Filter tweets created after this date
 
         self.twitter = TwitterService(force=force_api_fetch)
 
@@ -123,6 +125,63 @@ class DatasetCreator:
         # Return True if lang is 'en' or if we can't determine
         return lang == "en" if lang else True
 
+    def is_tweet_after_date(self, tweet: Tweet) -> bool:
+        """
+        Check if tweet was created after the specified date filter.
+
+        Args:
+            tweet: Tweet object with raw_api_data
+
+        Returns:
+            True if tweet is after the date filter (or no filter set), False otherwise
+        """
+        # If no date filter, pass all tweets
+        if not self.tweet_date:
+            return True
+
+        if not tweet.raw_api_data:
+            # If no API data, can't determine date - skip it
+            return False
+
+        api_data = tweet.raw_api_data
+
+        # Try to find the created_at field
+        created_at_str = None
+
+        if isinstance(api_data, dict):
+            # Check root level
+            created_at_str = api_data.get("created_at")
+
+            # Check in 'data' if present
+            if not created_at_str and "data" in api_data:
+                if isinstance(api_data["data"], dict):
+                    created_at_str = api_data["data"].get("created_at")
+
+        if not created_at_str:
+            # No created_at found, can't determine - skip it
+            return False
+
+        try:
+            # Parse the Twitter date format: "2024-01-15T12:34:56.000Z"
+            from dateutil import parser as date_parser
+            tweet_created_at = date_parser.parse(created_at_str)
+            
+            # Make both timezone-aware for comparison (or both naive)
+            if tweet_created_at.tzinfo is None and self.tweet_date.tzinfo is not None:
+                # Make tweet_created_at aware
+                import pytz
+                tweet_created_at = pytz.utc.localize(tweet_created_at)
+            elif tweet_created_at.tzinfo is not None and self.tweet_date.tzinfo is None:
+                # Make self.tweet_date aware
+                import pytz
+                tweet_date_aware = pytz.utc.localize(self.tweet_date)
+                return tweet_created_at > tweet_date_aware
+            
+            return tweet_created_at > self.tweet_date
+        except Exception as e:
+            logger.warning(f"Failed to parse tweet date '{created_at_str}': {e}")
+            return False
+
     def load_data_from_database(self, session) -> List[Dict]:
         """
         Load unique tweets from database with their videos and notes.
@@ -160,6 +219,7 @@ class DatasetCreator:
             "total": len(tweet_media_pairs),
             "not_original": 0,
             "not_english": 0,
+            "not_after_date": 0,
             "no_file": 0,
             "no_api_data": 0,
         }
@@ -186,12 +246,19 @@ class DatasetCreator:
                 stats["not_english"] += 1
                 continue
 
+            # Check if tweet is after the date filter
+            if not self.is_tweet_after_date(tweet):
+                stats["not_after_date"] += 1
+                continue
+
             filtered_tweets.append((tweet, media))
 
         logger.info(f"After filtering:")
         logger.info(f"  ✓ Original tweets (not RT/reply): {len(filtered_tweets)}")
         logger.info(f"  ✗ Filtered out {stats['not_original']} retweets/replies")
         logger.info(f"  ✗ Filtered out {stats['not_english']} non-English tweets")
+        if self.tweet_date:
+            logger.info(f"  ✗ Filtered out {stats['not_after_date']} tweets before {self.tweet_date}")
         logger.info(f"  ✗ Skipped {stats['no_file']} missing video files")
         if stats["no_api_data"] > 0:
             logger.warning(
@@ -691,6 +758,12 @@ def main():
         default=None,
         help="Path to file containing tweet IDs to include (one per line)",
     )
+    parser.add_argument(
+        "--tweet-date",
+        type=str,
+        default=None,
+        help="Filter tweets created after this date (format: YYYY-MM-DD, e.g., 2025-01-01)",
+    )
     args = parser.parse_args()
 
     # Load tweet IDs from file if provided
@@ -705,12 +778,23 @@ def main():
             logger.error(f"Tweet IDs file not found: {args.tweet_ids_file}")
             sys.exit(1)
 
+    # Parse tweet_date if provided
+    tweet_date = None
+    if args.tweet_date:
+        try:
+            tweet_date = datetime.strptime(args.tweet_date, "%Y-%m-%d")
+            logger.info(f"Parsed tweet date filter: {tweet_date}")
+        except ValueError:
+            logger.error(f"Invalid date format: {args.tweet_date}. Please use YYYY-MM-DD format (e.g., 2025-01-01)")
+            sys.exit(1)
+
     creator = DatasetCreator(
         force_api_fetch=args.force_api_fetch,
         sample_size=args.sample_size,
         random_seed=args.random_seed,
         note_status_filter=args.note_status,
         tweet_ids=tweet_ids,
+        tweet_date=tweet_date,
     )
     success = creator.run(use_api=not args.no_api)
 
