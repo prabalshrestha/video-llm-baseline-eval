@@ -254,11 +254,11 @@ class EvaluationMetrics:
             llm_output: Dictionary with LLM analysis results
                 - is_misleading: bool
                 - summary: str
-                - reasons: List[str]
+                - misleading_tags: List[str]
             human_note: Dictionary with human community note
                 - is_misleading: bool
                 - summary: str
-                - reasons: dict or list
+                - misleading_tags: dict or list
 
         Returns:
             Dictionary with all computed metrics
@@ -285,8 +285,8 @@ class EvaluationMetrics:
         )
 
         # Reason overlap
-        llm_reasons = llm_output.get("reasons", [])
-        human_reasons = self._extract_human_reasons(human_note)
+        llm_reasons = llm_output.get("misleading_tags", llm_output.get("reasons", []))
+        human_reasons = self._extract_human_misleading_tags(human_note)
         reason_metrics = self.calculate_reason_overlap(llm_reasons, human_reasons)
         metrics["reason_precision"] = reason_metrics["precision"]
         metrics["reason_recall"] = reason_metrics["recall"]
@@ -294,19 +294,20 @@ class EvaluationMetrics:
 
         return metrics
 
-    def _extract_human_reasons(self, human_note: Dict) -> List[str]:
+    def _extract_human_misleading_tags(self, human_note: Dict) -> List[str]:
         """
-        Extract reason categories from human note.
+        Extract misleading tag categories from human note.
 
         Handles both dict format (with 0/1 values) and list format.
+        Supports legacy "reasons" key for backward compatibility.
 
         Args:
             human_note: Human community note data
 
         Returns:
-            List of reason category names
+            List of misleading tag category names
         """
-        reasons_data = human_note.get("reasons", {})
+        reasons_data = human_note.get("misleading_tags", human_note.get("reasons", {}))
 
         if isinstance(reasons_data, dict):
             # Dict format: {"factual_error": 1, "missing_context": 1, ...}

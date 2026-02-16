@@ -342,7 +342,7 @@ class DatasetCreator:
                     == "MISINFORMED_OR_POTENTIALLY_MISLEADING",
                     "created_at_millis": note.created_at_millis,
                     "current_status": note.current_status or "",  # NEW FIELD
-                    "reasons": {
+                    "misleading_tags": {
                         "factual_error": note.misleading_factual_error or 0,
                         "manipulated_media": note.misleading_manipulated_media or 0,
                         "missing_context": note.misleading_missing_important_context

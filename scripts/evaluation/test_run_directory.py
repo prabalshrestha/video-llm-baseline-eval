@@ -30,7 +30,7 @@ class MockService:
             "model": self.model_name,
             "is_misleading": True,
             "summary": "Test summary",
-            "reasons": ["test_reason"],
+            "misleading_tags": ["test_reason"],
             "confidence": "high",
             "raw_response": "test response"
         }
@@ -60,7 +60,7 @@ def test_run_directory_structure():
                     "community_note": {
                         "is_misleading": True,
                         "summary": "Test note",
-                        "reasons": ["test"]
+                        "misleading_tags": ["test"]
                     }
                 }
             ]
@@ -105,13 +105,13 @@ def test_run_directory_structure():
                 "human_note": {
                     "is_misleading": True,
                     "summary": "Test",
-                    "reasons": ["test"]
+                    "misleading_tags": ["test"]
                 },
                 "mock1_output": {
                     "success": True,
                     "is_misleading": True,
                     "summary": "Test summary 1",
-                    "reasons": ["test"],
+                    "misleading_tags": ["test"],
                     "confidence": "high"
                 },
                 "mock1_metrics": {
@@ -127,7 +127,7 @@ def test_run_directory_structure():
                     "success": True,
                     "is_misleading": False,
                     "summary": "Test summary 2",
-                    "reasons": [],
+                    "misleading_tags": [],
                     "confidence": "medium"
                 },
                 "mock2_metrics": {

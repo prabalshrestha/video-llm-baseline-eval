@@ -280,7 +280,7 @@ def export_to_json_format(session: Session, output_limit: Optional[int] = None) 
                 "summary": note.summary,
                 "is_misleading": note.classification == "MISINFORMED_OR_POTENTIALLY_MISLEADING",
                 "created_at_millis": note.created_at_millis,
-                "reasons": {
+                "misleading_tags": {
                     "factual_error": note.misleading_factual_error,
                     "manipulated_media": note.misleading_manipulated_media,
                     "missing_context": note.misleading_missing_important_context,

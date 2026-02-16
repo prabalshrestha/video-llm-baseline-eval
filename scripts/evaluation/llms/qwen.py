@@ -177,7 +177,7 @@ class QwenService(VideoLLMService):
                     "is_misleading": {"type": "boolean"},
                     "summary": {"type": "string"},
                     "sources": {"type": "array", "items": {"type": "string"}},
-                    "reasons": {"type": "array", "items": {"type": "string"}},
+                    "misleading_tags": {"type": "array", "items": {"type": "string"}},
                     "confidence": {"type": "string"},
                 },
                 "required": [
@@ -185,7 +185,7 @@ class QwenService(VideoLLMService):
                     "is_misleading",
                     "summary",
                     "sources",
-                    "reasons",
+                    "misleading_tags",
                     "confidence",
                 ],
             },
@@ -266,7 +266,7 @@ class QwenService(VideoLLMService):
                 is_misleading=response_data.get("is_misleading"),
                 summary=response_data.get("summary"),
                 sources=response_data.get("sources", []),
-                reasons=response_data.get("reasons", []),
+                misleading_tags=response_data.get("misleading_tags", response_data.get("reasons", [])),
                 confidence=response_data.get("confidence"),
                 raw_response=json.dumps(response_data),
             )

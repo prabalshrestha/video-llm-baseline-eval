@@ -4,8 +4,8 @@ Pydantic models for structured LLM outputs.
 Ensures consistent response format from different LLMs.
 """
 
-from typing import List, Optional, Literal
-from pydantic import BaseModel, Field, field_validator
+from typing import List, Optional, Literal, Any
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # Type alias for valid reason categories (based on Community Notes definitions)
@@ -44,10 +44,18 @@ class CommunityNoteOutput(BaseModel):
         description="List of URLs or references used to verify claims",
     )
 
-    reasons: List[str] = Field(
+    misleading_tags: List[str] = Field(
         default_factory=list,
         description="List of applicable misinformation categories: 'factual_error', 'manipulated_media', 'outdated_information', 'missing_important_context', 'disputed_claim_as_fact', 'misinterpreted_satire', 'other'",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_reasons_alias(cls, data: Any) -> Any:
+        """Accept legacy 'reasons' key from API responses."""
+        if isinstance(data, dict) and "misleading_tags" not in data and "reasons" in data:
+            data = {**data, "misleading_tags": data["reasons"]}
+        return data
 
     confidence: ConfidenceLevel = Field(
         description="Confidence level in the assessment: 'high', 'medium', or 'low'"
@@ -78,11 +86,11 @@ class VideoAnalysisResult(BaseModel):
         description="List of URLs or references used to verify claims",
     )
 
-    # reasons: List[ReasonCategory] = Field(
+    # misleading_tags: List[ReasonCategory] = Field(
     #     default_factory=list, description="List of misinformation categories"
     # )
 
-    reasons: List[str] = Field(
+    misleading_tags: List[str] = Field(
         default_factory=list,
         description="List of misinformation categories (e.g., 'factual_error', 'manipulated_media', 'outdated_information', 'missing_important_context', 'disputed_claim_as_fact', 'misinterpreted_satire', 'other')",
     )
