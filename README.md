@@ -232,6 +232,7 @@ python main.py random --limit 40 --status CURRENTLY_RATED_NOT_HELPFUL
 **Expected Results:**
 
 If you run `python main.py random --limit 100`:
+
 - Samples and identifies ~100 tweets with videos
 - Makes ~100 Twitter API calls
 - Final dataset may have ~70-80 tweets (some filtered for being RT/reply or non-English)
@@ -383,7 +384,7 @@ The dataset includes all necessary fields for evaluation:
 
 - **Video Information**: filename, path, duration, title, uploader
 - **Tweet Details**: tweet ID, URL, text/content, author info, engagement metrics
-- **Community Notes**: note ID, classification, human explanation, misleading reasons
+- **Community Notes**: note ID, classification, human explanation, misleading misleading_tags
 
 ### Dataset Versioning
 
@@ -402,6 +403,7 @@ data/evaluation/
 ```
 
 **Benefits:**
+
 - ✅ Full history preserved
 - ✅ Reproducible experiments
 - ✅ Easy to compare different runs
@@ -478,9 +480,10 @@ cp env.template .env
 ```
 
 Get API keys:
+
 - **Gemini**: https://makersuite.google.com/app/apikey
 - **OpenAI**: https://platform.openai.com/api-keys
-- **Qwen**: 
+- **Qwen**:
   - Local models (qwen2.5-vl): No API key needed!
   - Cloud models (qwen3-vl-cloud): Get from https://ollama.com/settings/keys
 

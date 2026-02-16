@@ -69,7 +69,9 @@ class EvaluationMetrics:
                 self._nltk_initialized = True
                 logger.info("Initialized NLTK")
             except ImportError:
-                logger.error("nltk library not installed. Install with: pip install nltk")
+                logger.error(
+                    "nltk library not installed. Install with: pip install nltk"
+                )
                 raise
 
     def calculate_rouge_scores(
@@ -104,9 +106,7 @@ class EvaluationMetrics:
             logger.error(f"Error calculating ROUGE scores: {e}")
             return {"rouge1": 0.0, "rouge2": 0.0, "rougeL": 0.0}
 
-    def calculate_bleu_score(
-        self, hypothesis: str, reference: str
-    ) -> float:
+    def calculate_bleu_score(self, hypothesis: str, reference: str) -> float:
         """
         Calculate BLEU score.
 
@@ -142,9 +142,7 @@ class EvaluationMetrics:
             logger.error(f"Error calculating BLEU score: {e}")
             return 0.0
 
-    def calculate_semantic_similarity(
-        self, text1: str, text2: str
-    ) -> float:
+    def calculate_semantic_similarity(self, text1: str, text2: str) -> float:
         """
         Calculate semantic similarity using sentence embeddings.
 
@@ -164,7 +162,7 @@ class EvaluationMetrics:
         try:
             # Lazy import to avoid segfault on module load
             import numpy as np
-            
+
             self._initialize_sentence_transformer()
 
             # Generate embeddings
@@ -182,9 +180,7 @@ class EvaluationMetrics:
             logger.error(f"Error calculating semantic similarity: {e}")
             return 0.0
 
-    def calculate_classification_accuracy(
-        self, predicted: bool, actual: bool
-    ) -> bool:
+    def calculate_classification_accuracy(self, predicted: bool, actual: bool) -> bool:
         """
         Calculate binary classification accuracy (is_misleading).
 
@@ -198,31 +194,31 @@ class EvaluationMetrics:
         return predicted == actual
 
     def calculate_reason_overlap(
-        self, predicted_reasons: List[str], actual_reasons: List[str]
+        self, predicted_misleading_tags: List[str], actual_misleading_tags: List[str]
     ) -> Dict[str, float]:
         """
         Calculate overlap between predicted and actual reason categories.
 
         Args:
-            predicted_reasons: List of reasons identified by LLM
-            actual_reasons: List of actual reasons from human note
+            predicted_misleading_tags: List of misleading_tags identified by LLM
+            actual_misleading_tags: List of actual misleading_tags from human note
 
         Returns:
             Dictionary with precision, recall, and F1 scores
         """
-        if not actual_reasons:
-            # If no actual reasons, perfect score if no predictions
-            if not predicted_reasons:
+        if not actual_misleading_tags:
+            # If no actual misleading_tags, perfect score if no predictions
+            if not predicted_misleading_tags:
                 return {"precision": 1.0, "recall": 1.0, "f1": 1.0}
             else:
                 return {"precision": 0.0, "recall": 1.0, "f1": 0.0}
 
-        if not predicted_reasons:
+        if not predicted_misleading_tags:
             return {"precision": 1.0, "recall": 0.0, "f1": 0.0}
 
         # Convert to sets for easier comparison
-        pred_set = set(predicted_reasons)
-        actual_set = set(actual_reasons)
+        pred_set = set(predicted_misleading_tags)
+        actual_set = set(actual_misleading_tags)
 
         # Calculate intersection
         intersection = pred_set & actual_set
@@ -254,11 +250,11 @@ class EvaluationMetrics:
             llm_output: Dictionary with LLM analysis results
                 - is_misleading: bool
                 - summary: str
-                - reasons: List[str]
+                - misleading_tags: List[str]
             human_note: Dictionary with human community note
                 - is_misleading: bool
                 - summary: str
-                - reasons: dict or list
+                - misleading_tags: dict or list
 
         Returns:
             Dictionary with all computed metrics
@@ -285,16 +281,18 @@ class EvaluationMetrics:
         )
 
         # Reason overlap
-        llm_reasons = llm_output.get("reasons", [])
-        human_reasons = self._extract_human_reasons(human_note)
-        reason_metrics = self.calculate_reason_overlap(llm_reasons, human_reasons)
+        llm_misleading_tags = llm_output.get("misleading_tags", [])
+        human_misleading_tags = self._extract_human_misleading_tags(human_note)
+        reason_metrics = self.calculate_reason_overlap(
+            llm_misleading_tags, human_misleading_tags
+        )
         metrics["reason_precision"] = reason_metrics["precision"]
         metrics["reason_recall"] = reason_metrics["recall"]
         metrics["reason_f1"] = reason_metrics["f1"]
 
         return metrics
 
-    def _extract_human_reasons(self, human_note: Dict) -> List[str]:
+    def _extract_human_misleading_tags(self, human_note: Dict) -> List[str]:
         """
         Extract reason categories from human note.
 
@@ -306,20 +304,18 @@ class EvaluationMetrics:
         Returns:
             List of reason category names
         """
-        reasons_data = human_note.get("reasons", {})
+        misleading_tags_data = human_note.get("misleading_tags", {})
 
-        if isinstance(reasons_data, dict):
+        if isinstance(misleading_tags_data, dict):
             # Dict format: {"factual_error": 1, "missing_context": 1, ...}
-            return [key for key, value in reasons_data.items() if value == 1]
-        elif isinstance(reasons_data, list):
+            return [key for key, value in misleading_tags_data.items() if value == 1]
+        elif isinstance(misleading_tags_data, list):
             # List format: ["factual_error", "missing_context", ...]
-            return reasons_data
+            return misleading_tags_data
         else:
             return []
 
-    def calculate_aggregate_metrics(
-        self, all_results: List[Dict]
-    ) -> Dict[str, float]:
+    def calculate_aggregate_metrics(self, all_results: List[Dict]) -> Dict[str, float]:
         """
         Calculate aggregate metrics across all samples.
 
@@ -386,4 +382,3 @@ if __name__ == "__main__":
 
     print("\n" + "=" * 70)
     print("✓ Metrics test complete")
-
