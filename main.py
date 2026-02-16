@@ -118,13 +118,15 @@ class VideoLLMCLI:
         """Explore the data."""
         return self.run_script("scripts/data_processing/explore_notes.py")
     
-    def random_sample(self, limit=30, seed=None, status="CURRENTLY_RATED_HELPFUL"):
+    def random_sample(self, limit=30, seed=None, status="CURRENTLY_RATED_HELPFUL", tweet_date=None):
         """Random sample notes by status, download videos, and create dataset."""
         args = ["--limit", str(limit)]
         if seed is not None:
             args.extend(["--seed", str(seed)])
         if status:
             args.extend(["--status", status])
+        if tweet_date:
+            args.extend(["--tweet-date", tweet_date])
         return self.run_script("scripts/data_processing/random_sample_pipeline.py", args)
 
     def test(self):
@@ -208,22 +210,25 @@ Random Sampling Options (ALL COMMANDS):
 
 Random Sample Command (Quick Start):
 
-  python main.py random [--limit N] [--seed S] [--status STATUS]
+  python main.py random [--limit N] [--seed S] [--status STATUS] [--tweet-date DATE]
   
   Randomly samples tweets with notes of specified status, downloads videos,
   and creates evaluation dataset. Maximum randomness for diverse sampling!
   
   Options:
-    --limit N     Number of videos to download (default: 30)
-    --seed S      Random seed for reproducibility (default: 42)
-    --status STR  Note status filter (default: CURRENTLY_RATED_HELPFUL)
-                  Other options: CURRENTLY_RATED_NOT_HELPFUL, NEEDS_MORE_RATINGS
+    --limit N        Number of videos to download (default: 30)
+    --seed S         Random seed for reproducibility (default: 42)
+    --status STR     Note status filter (default: CURRENTLY_RATED_HELPFUL)
+                     Other options: CURRENTLY_RATED_NOT_HELPFUL, NEEDS_MORE_RATINGS
+    --tweet-date D   Filter tweets created after date (format: MM/DD/YYYY, e.g., 1/1/2025)
   
   Examples:
     python main.py random --limit 50                           # 50 helpful videos
     python main.py random --limit 30 --seed 42                 # Reproducible
     python main.py random --limit 20 --status NEEDS_MORE_RATINGS  # Unrated notes
     python main.py random --limit 40 --status CURRENTLY_RATED_NOT_HELPFUL  # Not helpful
+    python main.py random --limit 40 --tweet-date 1/1/2025     # Tweets after 1/1/2025
+    python main.py random --limit 30 --tweet-date 1/1/2025 --status CURRENTLY_RATED_NOT_HELPFUL  # Combined filters
 
 Evaluation Options:
 
@@ -364,6 +369,13 @@ def main():
         help="Note status filter for random command (default: CURRENTLY_RATED_HELPFUL)",
     )
 
+    parser.add_argument(
+        "--tweet-date",
+        type=str,
+        default=None,
+        help="Filter tweets created after this date (format: MM/DD/YYYY, e.g., 1/1/2025)",
+    )
+
     args = parser.parse_args()
 
     cli = VideoLLMCLI()
@@ -376,7 +388,7 @@ def main():
         "dataset": lambda: cli.dataset(sample_size=args.sample_size, seed=args.seed),
         "evaluate": lambda: cli.evaluate(args.models, args.limit),
         "pipeline": lambda: cli.pipeline(args.limit, random_sample=args.random, seed=args.seed),
-        "random": lambda: cli.random_sample(args.limit, args.seed, args.status),
+        "random": lambda: cli.random_sample(args.limit, args.seed, args.status, args.tweet_date),
         "explore": cli.explore,
         "test": cli.test,
         "status": cli.show_results,
