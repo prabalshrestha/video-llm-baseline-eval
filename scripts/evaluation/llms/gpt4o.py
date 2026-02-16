@@ -196,7 +196,7 @@ class GPT4oService(VideoLLMService):
                 is_misleading=community_note.is_misleading,
                 summary=community_note.summary,
                 sources=community_note.sources,
-                misleading_tags=community_note.misleading_tags,
+                reasons=community_note.reasons,
                 confidence=community_note.confidence,
                 raw_response=response.choices[0].message.content or "",
             )

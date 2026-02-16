@@ -210,7 +210,7 @@ class GeminiService(VideoLLMService):
                                     "type": "array",
                                     "items": {"type": "string"},
                                 },
-                                "misleading_tags": {
+                                "reasons": {
                                     "type": "array",
                                     "items": {"type": "string"},
                                 },
@@ -225,7 +225,7 @@ class GeminiService(VideoLLMService):
                                 "is_misleading",
                                 "summary",
                                 "sources",
-                                "misleading_tags",
+                                "reasons",
                                 "confidence",
                             ],
                         },
@@ -246,7 +246,7 @@ class GeminiService(VideoLLMService):
                     is_misleading=community_note.is_misleading,
                     summary=community_note.summary,
                     sources=community_note.sources,
-                    misleading_tags=community_note.misleading_tags,
+                    reasons=community_note.reasons,
                     confidence=community_note.confidence,
                     raw_response=response.text,
                 ).model_dump()

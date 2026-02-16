@@ -16,7 +16,7 @@ ReasonCategory = Literal[
     "missing_important_context",  # The post omits critical context that changes the meaning
     "disputed_claim_as_fact",  # The post presents unverified or disputed claims as facts
     "misinterpreted_satire",  # The post is satire likely to be mistaken for a factual claim
-    "other",  # The post is misleading for misleading_tags not covered above
+    "other",  # The post is misleading for reasons not covered above
 ]
 
 
@@ -44,7 +44,7 @@ class CommunityNoteOutput(BaseModel):
         description="List of URLs or references used to verify claims",
     )
 
-    misleading_tags: List[str] = Field(
+    reasons: List[str] = Field(
         default_factory=list,
         description="List of applicable misinformation categories: 'factual_error', 'manipulated_media', 'outdated_information', 'missing_important_context', 'disputed_claim_as_fact', 'misinterpreted_satire', 'other'",
     )
@@ -78,11 +78,11 @@ class VideoAnalysisResult(BaseModel):
         description="List of URLs or references used to verify claims",
     )
 
-    # misleading_tags: List[ReasonCategory] = Field(
+    # reasons: List[ReasonCategory] = Field(
     #     default_factory=list, description="List of misinformation categories"
     # )
 
-    misleading_tags: List[str] = Field(
+    reasons: List[str] = Field(
         default_factory=list,
         description="List of misinformation categories (e.g., 'factual_error', 'manipulated_media', 'outdated_information', 'missing_important_context', 'disputed_claim_as_fact', 'misinterpreted_satire', 'other')",
     )

@@ -430,7 +430,7 @@ class VideoLLMEvaluator:
             "human_note": {
                 "is_misleading": human_note["is_misleading"],
                 "summary": human_note["summary"],
-                "misleading_tags": human_note["misleading_tags"],
+                "reasons": human_note["reasons"],
             },
         }
 
