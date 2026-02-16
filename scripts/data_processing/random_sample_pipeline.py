@@ -15,6 +15,7 @@ Usage:
     python scripts/data_processing/random_sample_pipeline.py --limit 100
     python scripts/data_processing/random_sample_pipeline.py --limit 50 --seed 42
     python scripts/data_processing/random_sample_pipeline.py --limit 100 --force
+    python scripts/data_processing/random_sample_pipeline.py --limit 30 --tweet-date 1/1/2025
 """
 
 import sys
@@ -28,7 +29,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from database import get_session, Note, Tweet, MediaMetadata
-from sqlalchemy import func, text
+from sqlalchemy import func, text, and_
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -40,7 +41,7 @@ class RandomSamplePipeline:
     """Pipeline for randomly sampling notes by status, downloading videos, and creating dataset."""
 
     def __init__(
-        self, limit=30, seed=None, force=False, status="CURRENTLY_RATED_HELPFUL"
+        self, limit=30, seed=None, force=False, status="CURRENTLY_RATED_HELPFUL", tweet_date=None
     ):
         self.limit = limit
         self.seed = (
@@ -48,9 +49,12 @@ class RandomSamplePipeline:
         )
         self.force = force
         self.status = status  # Note status filter
+        self.tweet_date = tweet_date  # Filter tweets created after this date
         self.video_tweet_ids = []  # Store the final video tweet IDs for dataset creation
         logger.info(f"Random seed: {self.seed}")
         logger.info(f"Note status filter: {self.status}")
+        if self.tweet_date:
+            logger.info(f"Tweet date filter: tweets created after {self.tweet_date}")
 
     def sample_notes_by_status(self, exclude_existing=True):
         """
@@ -84,12 +88,19 @@ class RandomSamplePipeline:
                 query = query.filter(Tweet.raw_api_data.is_(None))
                 logger.info("Filtering: Only tweets WITHOUT existing API data")
 
+            # Filter by tweet creation date if specified
+            if self.tweet_date:
+                query = query.filter(Tweet.created_at > self.tweet_date)
+                logger.info(f"Filtering: Only tweets created after {self.tweet_date}")
+
             query = query.order_by(func.random()).limit(self.limit * 10)  # Sample extra
 
             tweet_ids = [row.tweet_id for row in query.all()]
 
             logger.info(f"✓ Sampled {len(tweet_ids)} candidate tweets")
             logger.info(f"  Filter: current_status = {self.status}")
+            if self.tweet_date:
+                logger.info(f"  Filter: created_at > {self.tweet_date}")
             logger.info(f"  Seed: {self.seed}")
 
             return tweet_ids
@@ -300,6 +311,8 @@ class RandomSamplePipeline:
         logger.info("RANDOM SAMPLE PIPELINE")
         logger.info("=" * 70)
         logger.info(f"Target: {self.limit} video tweets from {self.status} notes")
+        if self.tweet_date:
+            logger.info(f"Date filter: tweets created after {self.tweet_date}")
         logger.info(f"Random seed: {self.seed}")
         logger.info(f"Force mode: {self.force}")
         logger.info("=" * 70)
@@ -419,10 +432,27 @@ def main():
         help="Note status to filter by (default: CURRENTLY_RATED_HELPFUL). Other options: CURRENTLY_RATED_NOT_HELPFUL, NEEDS_MORE_RATINGS, etc.",
     )
 
+    parser.add_argument(
+        "--tweet-date",
+        type=str,
+        default=None,
+        help="Filter tweets created after this date (format: MM/DD/YYYY, e.g., 1/1/2025)",
+    )
+
     args = parser.parse_args()
 
+    # Parse tweet_date if provided
+    tweet_date = None
+    if args.tweet_date:
+        try:
+            tweet_date = datetime.strptime(args.tweet_date, "%m/%d/%Y")
+            logger.info(f"Parsed tweet date filter: {tweet_date}")
+        except ValueError:
+            logger.error(f"Invalid date format: {args.tweet_date}. Please use MM/DD/YYYY format (e.g., 1/1/2025)")
+            sys.exit(1)
+
     pipeline = RandomSamplePipeline(
-        limit=args.limit, seed=args.seed, force=args.force, status=args.status
+        limit=args.limit, seed=args.seed, force=args.force, status=args.status, tweet_date=tweet_date
     )
 
     success = pipeline.run()
