@@ -97,8 +97,11 @@ class VideoLLMEvaluator:
         self.model_configs = model_configs or {}
 
         # Initialize Gemini
-        gemini_variant = self.model_configs.get("gemini", "gemini-1.5-pro")
-        self.services["gemini"] = GeminiService(model_name=gemini_variant)
+        gemini_variant = self.model_configs.get("gemini", "gemini-3-flash-preview")
+        gemini_grounding = self.model_configs.get("gemini_grounding", False)
+        self.services["gemini"] = GeminiService(
+            model_name=gemini_variant, use_grounding=gemini_grounding
+        )
 
         # Initialize GPT-4o
         self.services["gpt4o"] = GPT4oService()
@@ -430,7 +433,9 @@ class VideoLLMEvaluator:
             "human_note": {
                 "is_misleading": human_note["is_misleading"],
                 "summary": human_note["summary"],
-                "misleading_tags": human_note.get("misleading_tags", human_note.get("reasons")),
+                "misleading_tags": human_note.get(
+                    "misleading_tags", human_note.get("reasons")
+                ),
             },
         }
 
@@ -816,6 +821,12 @@ def main():
         action="store_true",
         help="Skip metrics calculation (faster, avoids potential import issues)",
     )
+    parser.add_argument(
+        "--gemini-grounding",
+        action="store_true",
+        default=False,
+        help="Enable Google Search grounding for Gemini (real-time web context)",
+    )
 
     args = parser.parse_args()
 
@@ -825,6 +836,7 @@ def main():
     # Build model configurations
     model_configs = {
         "gemini": args.gemini_model,
+        "gemini_grounding": args.gemini_grounding,
         "qwen": args.qwen_model,
         "qwen_local": args.qwen_local,
     }
