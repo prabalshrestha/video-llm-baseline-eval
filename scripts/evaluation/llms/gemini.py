@@ -118,7 +118,7 @@ class GeminiService(VideoLLMService):
             """Upload video to Gemini Files API."""
             logger.info(f"Uploading video: {state['video_path']}")
             try:
-                video_file = self._client.files.upload(path=state["video_path"])
+                video_file = self._client.files.upload(file=state["video_path"])
                 state["video_file"] = video_file
                 state["video_file_name"] = video_file.name
                 logger.info(f"  ✓ Video uploaded: {video_file.name}")
