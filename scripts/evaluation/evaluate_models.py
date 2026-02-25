@@ -266,6 +266,7 @@ class VideoLLMEvaluator:
                         "sample_id": result["sample_id"],
                         "tweet_id": result.get("tweet_id"),
                         "tweet_url": result.get("tweet_url"),
+                        "tweet_created_at": result.get("tweet_created_at"),
                         "video_path": result.get("video_path"),
                         "tweet_text": result.get("tweet_text"),
                         "human_note": result.get("human_note"),
@@ -291,13 +292,79 @@ class VideoLLMEvaluator:
                 "results": model_results,
             }
 
-            # Save to file
+            # Save JSON
             filename = f"{model_variant}.json"
             model_path = self.run_dir / "models" / filename
             with open(model_path, "w", encoding="utf-8") as f:
                 json.dump(per_model_data, f, indent=2, ensure_ascii=False)
 
             logger.info(f"Saved {model_name} results to: {model_path}")
+
+            # Save CSV alongside JSON
+            self._save_per_model_csv(model_results, model_variant)
+
+    def _save_per_model_csv(self, model_results: List[Dict], model_variant: str):
+        """
+        Save per-model evaluation results to a CSV file alongside the JSON.
+
+        Args:
+            model_results: List of per-model result dicts from _save_per_model_results
+            model_variant: Model variant name used for the filename
+        """
+        import csv
+
+        csv_path = self.run_dir / "models" / f"{model_variant}.csv"
+
+        # Determine if any result has a thought_summary
+        has_thoughts = any(
+            r.get("output", {}).get("thought_summary") for r in model_results
+        )
+
+        base_fields = [
+            "tweet_id",
+            "tweet_url",
+            "predicted_label",
+            "is_misleading",
+            "summary",
+            "sources",
+            "misleading_tags",
+            "confidence",
+            "response_time_seconds",
+            "tweet_created_at",
+        ]
+        fieldnames = base_fields + (["thought_summary"] if has_thoughts else [])
+
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+
+            for r in model_results:
+                output = r.get("output", {})
+                sources = output.get("sources")
+                if isinstance(sources, list):
+                    sources = "; ".join(sources)
+                misleading_tags = output.get("misleading_tags")
+                if isinstance(misleading_tags, list):
+                    misleading_tags = ", ".join(misleading_tags)
+
+                row = {
+                    "tweet_id": r.get("tweet_id"),
+                    "tweet_url": r.get("tweet_url"),
+                    "predicted_label": output.get("predicted_label"),
+                    "is_misleading": output.get("is_misleading"),
+                    "summary": output.get("summary"),
+                    "sources": sources,
+                    "misleading_tags": misleading_tags,
+                    "confidence": output.get("confidence"),
+                    "response_time_seconds": r.get("response_time_seconds"),
+                    "tweet_created_at": r.get("tweet_created_at"),
+                }
+                if has_thoughts:
+                    row["thought_summary"] = output.get("thought_summary")
+
+                writer.writerow(row)
+
+        logger.info(f"Saved {model_variant} CSV to: {csv_path}")
 
     def _save_comparison_table(self, aggregate_stats: Dict):
         """
@@ -428,6 +495,7 @@ class VideoLLMEvaluator:
             "sample_id": sample_id,
             "tweet_id": sample["tweet"]["tweet_id"],
             "tweet_url": sample["tweet"]["url"],
+            "tweet_created_at": tweet_created_at,
             "video_path": video_path,
             "tweet_text": tweet_text,
             "human_note": {
