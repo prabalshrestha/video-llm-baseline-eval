@@ -101,6 +101,11 @@ class VideoAnalysisResult(BaseModel):
 
     raw_response: Optional[str] = Field(default=None, description="Raw LLM response")
 
+    thought_summary: Optional[str] = Field(
+        default=None,
+        description="Model's internal reasoning/thinking (only populated for thinking-capable models)",
+    )
+
     error: Optional[str] = Field(
         default=None, description="Error message if analysis failed"
     )

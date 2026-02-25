@@ -31,6 +31,10 @@ from scripts.evaluation.prompts import PromptTemplate
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+# Models that support extended thinking; thought parts are extracted and stored
+# in VideoAnalysisResult.thought_summary when these models are used.
+_THINKING_MODELS: frozenset = frozenset({"gemini-3-pro-preview"})
+
 
 # Define the state schema for the LangGraph workflow
 class VideoAnalysisState(TypedDict):
@@ -179,12 +183,25 @@ class GeminiService(VideoLLMService):
                 )
                 state["prompt"] = prompt
 
-                grounding_label = "grounding=ON" if self.use_grounding else "grounding=OFF"
-                logger.info(f"Generating analysis with {state['model_name']} ({grounding_label})...")
+                is_thinking = state["model_name"] in _THINKING_MODELS
+                labels = []
+                if self.use_grounding:
+                    labels.append("grounding=ON")
+                if is_thinking:
+                    labels.append("thinking=ON")
+                logger.info(
+                    f"Generating analysis with {state['model_name']}"
+                    + (f" ({', '.join(labels)})" if labels else "") + "..."
+                )
 
                 tools = (
                     [genai_types.Tool(google_search=genai_types.GoogleSearch())]
                     if self.use_grounding
+                    else None
+                )
+                thinking_config = (
+                    genai_types.ThinkingConfig(include_thoughts=True)
+                    if is_thinking
                     else None
                 )
 
@@ -194,10 +211,25 @@ class GeminiService(VideoLLMService):
                     config=genai_types.GenerateContentConfig(
                         temperature=0.0,
                         tools=tools,
+                        thinking_config=thinking_config,
                         response_mime_type="application/json",
                         response_schema=CommunityNoteOutput,
                     ),
                 )
+
+                # Extract thought summary from thinking-capable models
+                thought_summary: Optional[str] = None
+                if is_thinking and response.candidates:
+                    thought_parts = [
+                        part.text
+                        for part in response.candidates[0].content.parts
+                        if getattr(part, "thought", False) and part.text
+                    ]
+                    if thought_parts:
+                        thought_summary = "\n".join(thought_parts)
+                        logger.info(
+                            f"  ✓ Thought summary captured ({len(thought_summary)} chars)"
+                        )
 
                 # response.parsed is automatically deserialized into CommunityNoteOutput
                 community_note: CommunityNoteOutput = response.parsed
@@ -214,6 +246,7 @@ class GeminiService(VideoLLMService):
                     misleading_tags=community_note.misleading_tags,
                     confidence=community_note.confidence,
                     raw_response=raw_text,
+                    thought_summary=thought_summary,
                 ).model_dump()
 
                 logger.info(
